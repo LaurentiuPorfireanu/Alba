@@ -1,0 +1,72 @@
+2025-05-26 11:56:10.438 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 11:56:10.438 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 11:56:10.449 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 11:56:10.449 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 11:56:10.451 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 11:56:10.451 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:00:25.486 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:00:25.486 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:00:28.868 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 12:00:28.868 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 12:00:28.872 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:00:28.872 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:00:28.874 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:00:28.874 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:01:48.063 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:01:48.063 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:01:51.550 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 12:01:51.550 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
+2025-05-26 12:01:51.554 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:01:51.554 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:01:51.556 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:01:51.556 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:02:46.591 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:02:46.591 | INFO     | main:shutdown_event:41 - Oprire Network Anomaly Detection System
+2025-05-26 12:02:48.952 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:02:48.952 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:02:48.956 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:02:48.956 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:02:48.958 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:02:48.958 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:34:58.184 | INFO     | main:lifespan:27 - Oprire Network Anomaly Detection System
+2025-05-26 12:34:58.184 | INFO     | main:lifespan:27 - Oprire Network Anomaly Detection System
+2025-05-26 12:35:05.680 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:35:05.680 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:35:05.686 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:35:05.686 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:35:05.688 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:35:05.688 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:59:36.455 | INFO     | main:lifespan:27 - Oprire Network Anomaly Detection System
+2025-05-26 12:59:36.455 | INFO     | main:lifespan:27 - Oprire Network Anomaly Detection System
+2025-05-26 12:59:42.873 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:59:42.873 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 12:59:42.881 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:59:42.881 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 12:59:42.885 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 12:59:42.885 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 13:17:29.916 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 13:17:29.916 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 13:17:30.035 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 13:17:30.035 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 13:17:30.037 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 13:17:30.037 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 14:42:36.017 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 14:42:36.017 | INFO     | main:lifespan:22 - Pornire Network Anomaly Detection System
+2025-05-26 14:42:36.025 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 14:42:36.025 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
+2025-05-26 14:42:36.028 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 14:42:36.028 | INFO     | src.database.connection:connect_redis:26 - Conectat la Redis
+2025-05-26 14:42:36.029 | INFO     | src.services.anomaly_detector:__init__:40 - AnomalyDetector initialized
+2025-05-26 14:42:36.029 | INFO     | src.services.anomaly_detector:__init__:40 - AnomalyDetector initialized
+2025-05-26 14:42:36.030 | WARNING  | src.services.anomaly_detector:load_models:51 - PyTorch model not found at /app/models/autoencoder.pth
+2025-05-26 14:42:36.030 | WARNING  | src.services.anomaly_detector:load_models:51 - PyTorch model not found at /app/models/autoencoder.pth
+2025-05-26 14:42:36.031 | WARNING  | src.services.anomaly_detector:load_models:59 - Isolation Forest not found at /app/models/isolation_forest.pkl
+2025-05-26 14:42:36.031 | WARNING  | src.services.anomaly_detector:load_models:59 - Isolation Forest not found at /app/models/isolation_forest.pkl
+2025-05-26 14:42:36.031 | WARNING  | src.services.anomaly_detector:load_models:67 - Scaler not found at /app/models/scaler.pkl
+2025-05-26 14:42:36.031 | WARNING  | src.services.anomaly_detector:load_models:67 - Scaler not found at /app/models/scaler.pkl
+2025-05-26 14:42:36.032 | INFO     | src.services.alerting_system:__init__:58 - AlertingSystem initialized
+2025-05-26 14:42:36.032 | INFO     | src.services.alerting_system:__init__:58 - AlertingSystem initialized
+2025-05-26 14:42:36.032 | INFO     | src.api.routes:initialize_components:386 - API components initialized
+2025-05-26 14:42:36.032 | INFO     | src.api.routes:initialize_components:386 - API components initialized
+2025-05-26 14:45:22.335 | INFO     | main:lifespan:32 - Oprire Network Anomaly Detection System
+2025-05-26 14:45:22.335 | INFO     | main:lifespan:32 - Oprire Network Anomaly Detection System
