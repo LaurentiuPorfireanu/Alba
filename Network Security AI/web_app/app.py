@@ -20,7 +20,10 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         'simulation_running': False,
         'auto_attack': False,
         'attack_interval': 5,
-        'defense_active': True
+        'defense_active': False,
+        'training_in_progress': False,
+        'continuous_training': False,
+        'training_thread_running': False
     }
     
     @app.route('/')
@@ -118,32 +121,43 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     def get_attack_stats():
         return jsonify(attack_simulator.get_attack_stats())
     
-    @app.route('/api/train_models')
-    def train_models():
+    @app.route('/api/start_ai_training')
+    def start_ai_training():
+        if app_state['training_in_progress']:
+            return jsonify({
+                'success': False,
+                'message': 'Training already in progress'
+            })
+        
         def training_thread():
-            # Generate training data
-            print("Generating training data...")
-            training_data = []
-            
-            # Generate normal traffic
-            for _ in range(800):
-                normal_traffic = attack_simulator.generate_normal_traffic()
-                training_data.append(normal_traffic)
-            
-            # Generate attack traffic
-            attack_types = ['DDoS', 'Port Scan', 'Brute Force']
-            for attack_type in attack_types:
-                for _ in range(100):
-                    attack_data = attack_simulator.launch_attack(attack_type)['data']
-                    training_data.append(attack_data)
-            
-            # Train anomaly detector
-            anomaly_detector.train(training_data)
-            
-            # Train defense system
-            defense_system.train_defense_model()
-            
-            print("Model training completed!")
+            app_state['training_in_progress'] = True
+            try:
+                print("Starting AI training process...")
+                training_data = []
+                
+                # Generate normal traffic
+                for _ in range(800):
+                    normal_traffic = attack_simulator.generate_normal_traffic()
+                    training_data.append(normal_traffic)
+                
+                # Generate attack traffic
+                attack_types = ['DDoS', 'Port Scan', 'Brute Force']
+                for attack_type in attack_types:
+                    for _ in range(100):
+                        attack_data = attack_simulator.launch_attack(attack_type)['data']
+                        training_data.append(attack_data)
+                
+                # Train anomaly detector
+                anomaly_detector.train(training_data)
+                
+                # Train defense system
+                defense_system.train_defense_model()
+                
+                print("AI training completed successfully!")
+            except Exception as e:
+                print(f"Training error: {e}")
+            finally:
+                app_state['training_in_progress'] = False
         
         thread = threading.Thread(target=training_thread)
         thread.daemon = True
@@ -151,8 +165,116 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         
         return jsonify({
             'success': True,
-            'message': 'Model training started in background'
+            'message': 'AI training started in background'
         })
+    
+    @app.route('/api/continuous_training', methods=['POST'])
+    def toggle_continuous_training():
+        data = request.get_json()
+        app_state['continuous_training'] = data.get('enabled', False)
+        
+        if app_state['continuous_training']:
+            start_continuous_training()
+        
+        return jsonify({
+            'continuous_training': app_state['continuous_training']
+        })
+    
+    def start_continuous_training():
+        def training_loop():
+            print("Starting continuous training...")
+            while app_state.get('continuous_training', False) and not app_state['defense_active']:
+                try:
+                    # Generate some training data
+                    for _ in range(50):
+                        normal_traffic = attack_simulator.generate_normal_traffic()
+                        defense_system.training_data.append({
+                            'features': normal_traffic,
+                            'label': 0  # Normal
+                        })
+                    
+                    # Generate attack data
+                    attack_types = ['DDoS', 'Port Scan', 'Brute Force']
+                    for attack_type in attack_types:
+                        for _ in range(10):
+                            attack_data = attack_simulator.launch_attack(attack_type)['data']
+                            label = 2 if attack_type == 'DDoS' else 1  # Malicious or Suspicious
+                            defense_system.training_data.append({
+                                'features': attack_data,
+                                'label': label
+                            })
+                    
+                    # Train model every 200 samples
+                    if len(defense_system.training_data) >= 200:
+                        defense_system.train_defense_model()
+                        # Keep only recent training data
+                        defense_system.training_data = defense_system.training_data[-1000:]
+                    
+                    time.sleep(10)  # Wait 10 seconds before next training cycle
+                    
+                except Exception as e:
+                    print(f"Continuous training error: {e}")
+                    time.sleep(5)
+        
+        if not app_state.get('training_thread_running', False):
+            app_state['training_thread_running'] = True
+            thread = threading.Thread(target=training_loop)
+            thread.daemon = True
+            thread.start()
+    
+    @app.route('/api/save_ai_models')
+    def save_ai_models():
+        try:
+            # Save anomaly detector
+            anomaly_detector.save_model('models/anomaly_detector.pth')
+            
+            # Save defense system
+            success = defense_system.save_model('models/defense_system.pth')
+            
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'AI models saved successfully'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Error saving defense model'
+                })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'Error saving models: {str(e)}'
+            })
+    
+    @app.route('/api/load_ai_models')
+    def load_ai_models():
+        try:
+            # Load models
+            anomaly_loaded = anomaly_detector.load_model('models/anomaly_detector.pth')
+            defense_loaded = defense_system.load_model('models/defense_system.pth')
+            
+            return jsonify({
+                'success': True,
+                'anomaly_loaded': anomaly_loaded,
+                'defense_loaded': defense_loaded,
+                'message': 'AI models loaded successfully'
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'Error loading models: {str(e)}'
+            })
+    
+    @app.route('/api/ai_training_status')
+    def get_ai_training_status():
+        return jsonify({
+            'training_in_progress': app_state['training_in_progress']
+        })
+    
+    @app.route('/api/train_models')
+    def train_models():
+        return start_ai_training()  # Redirect to new endpoint
     
     @app.route('/api/auto_attack', methods=['POST'])
     def toggle_auto_attack():
@@ -173,6 +295,13 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         data = request.get_json()
         app_state['defense_active'] = data.get('enabled', True)
         
+        # Set defense mode in defense system
+        defense_system.set_defense_mode(app_state['defense_active'])
+        
+        # Stop continuous training if defense is enabled
+        if app_state['defense_active']:
+            app_state['continuous_training'] = False
+        
         return jsonify({
             'defense_active': app_state['defense_active']
         })
@@ -184,6 +313,8 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         attack_simulator.attack_history.clear()
         app_state['auto_attack'] = False
         app_state['simulation_running'] = False
+        app_state['continuous_training'] = False
+        app_state['defense_active'] = False
         
         return jsonify({
             'success': True,
@@ -218,6 +349,8 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             'auto_attack': app_state['auto_attack'],
             'defense_active': app_state['defense_active'],
             'simulation_running': app_state['simulation_running'],
+            'training_in_progress': app_state['training_in_progress'],
+            'continuous_training': app_state['continuous_training'],
             'interfaces': network_monitor.get_network_interfaces()
         })
     

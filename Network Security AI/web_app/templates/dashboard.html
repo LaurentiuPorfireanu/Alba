@@ -100,6 +100,20 @@
             background: linear-gradient(45deg, #74b9ff, #0984e3);
         }
 
+        .ai-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            border: 2px solid rgba(116, 185, 255, 0.3);
+        }
+
+        .ai-section h4 {
+            margin-bottom: 10px;
+            color: #74b9ff;
+            font-size: 1.1em;
+        }
+
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -221,6 +235,22 @@
         input:checked+.slider:before {
             transform: translateX(26px);
         }
+
+        .training-section {
+            border-color: rgba(255, 203, 110, 0.3) !important;
+        }
+
+        .training-section h4 {
+            color: #fdcb6e !important;
+        }
+
+        .defense-section {
+            border-color: rgba(255, 107, 107, 0.3) !important;
+        }
+
+        .defense-section h4 {
+            color: #ff6b6b !important;
+        }
     </style>
 </head>
 
@@ -237,8 +267,52 @@
             <div class="controls">
                 <button class="btn success" onclick="startMonitoring()">Start Monitor</button>
                 <button class="btn warning" onclick="stopMonitoring()">Stop Monitor</button>
-                <button class="btn info" onclick="trainModels()">Train AI</button>
                 <button class="btn" onclick="resetSystem()">Reset</button>
+            </div>
+
+            <!-- Training Section -->
+            <div class="ai-section training-section">
+                <h4>Training Mode</h4>
+                <div class="controls">
+                    <button class="btn info" onclick="startAITraining()">One-Time Training</button>
+                    <button class="btn success" onclick="saveAIModels()">Save Best Models</button>
+                    <button class="btn warning" onclick="loadAIModels()">Load Saved Models</button>
+                </div>
+
+                <div style="margin: 10px 0;">
+                    <label>
+                        Continuous Training:
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="continuousTrainingToggle" onchange="toggleContinuousTraining()">
+                            <span class="slider"></span>
+                        </div>
+                    </label>
+                </div>
+
+                <div id="aiStatus" style="margin-top: 10px; font-size: 0.9em;">
+                    AI Status: Ready
+                </div>
+                <div id="trainingSamples" style="font-size: 0.8em; opacity: 0.8;">
+                    Training Samples: 0
+                </div>
+            </div>
+
+            <!-- Defense Testing Section -->
+            <div class="ai-section defense-section">
+                <h4>Defense Testing Mode</h4>
+                <p style="font-size: 0.9em; margin-bottom: 10px; opacity: 0.8;">
+                    Enable this to test the trained AI models. Training will be disabled during testing.
+                </p>
+
+                <div style="margin: 15px 0;">
+                    <label>
+                        Defense System Test:
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="defenseToggle" onchange="toggleDefense()">
+                            <span class="slider"></span>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <div style="margin: 15px 0;">
@@ -253,16 +327,6 @@
                     Auto Attack:
                     <div class="toggle-switch">
                         <input type="checkbox" id="autoAttackToggle" onchange="toggleAutoAttack()">
-                        <span class="slider"></span>
-                    </div>
-                </label>
-            </div>
-
-            <div style="margin: 15px 0;">
-                <label>
-                    Defense System:
-                    <div class="toggle-switch">
-                        <input type="checkbox" id="defenseToggle" checked onchange="toggleDefense()">
                         <span class="slider"></span>
                     </div>
                 </label>
@@ -396,11 +460,124 @@
                 });
         }
 
-        function trainModels() {
-            fetch('/api/train_models')
+        function startAITraining() {
+            const defenseEnabled = document.getElementById('defenseToggle').checked;
+
+            if (defenseEnabled) {
+                alert('Cannot train while defense testing is active! Disable defense mode first.');
+                return;
+            }
+
+            document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #fdcb6e;">Training in progress...</span>';
+
+            fetch('/api/start_ai_training')
                 .then(response => response.json())
                 .then(data => {
-                    addLogEntry('systemLog', 'AI model training started...', 'normal');
+                    if (data.success) {
+                        addLogEntry('systemLog', 'AI training started...', 'normal');
+
+                        // Check training status periodically
+                        const checkTraining = setInterval(() => {
+                            fetch('/api/ai_training_status')
+                                .then(response => response.json())
+                                .then(status => {
+                                    if (!status.training_in_progress) {
+                                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #00b894;">Training Complete</span>';
+                                        addLogEntry('systemLog', 'AI models trained successfully', 'normal');
+                                        clearInterval(checkTraining);
+                                    }
+                                });
+                        }, 2000);
+                    } else {
+                        addLogEntry('systemLog', `Training error: ${data.message}`, 'danger');
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #ff6b6b;">Training Failed</span>';
+                    }
+                });
+        }
+
+        function toggleContinuousTraining() {
+            const enabled = document.getElementById('continuousTrainingToggle').checked;
+            const defenseEnabled = document.getElementById('defenseToggle').checked;
+
+            if (enabled && defenseEnabled) {
+                alert('Cannot train while defense testing is active!');
+                document.getElementById('continuousTrainingToggle').checked = false;
+                return;
+            }
+
+            fetch('/api/continuous_training', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', `Continuous training ${enabled ? 'enabled' : 'disabled'}`, 'normal');
+                    if (enabled) {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #fdcb6e;">Continuous Training...</span>';
+                    } else {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #00b894;">Ready</span>';
+                    }
+                });
+        }
+
+        function saveAIModels() {
+            fetch('/api/save_ai_models')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #00b894;">Models Saved</span>';
+                        addLogEntry('systemLog', 'AI models saved successfully', 'normal');
+                    } else {
+                        addLogEntry('systemLog', `Error saving models: ${data.message}`, 'danger');
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #ff6b6b;">Save Failed</span>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addLogEntry('systemLog', 'Network error while saving models', 'danger');
+                    document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #ff6b6b;">Save Failed</span>';
+                });
+        }
+
+
+        function loadAIModels() {
+            fetch('/api/load_ai_models')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #00b894;">Models Loaded</span>';
+                        addLogEntry('systemLog', 'AI models loaded successfully', 'normal');
+                    } else {
+                        addLogEntry('systemLog', `Error loading models: ${data.message}`, 'danger');
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #ff6b6b;">Load Failed</span>';
+                    }
+                });
+        }
+
+        function toggleDefense() {
+            const enabled = document.getElementById('defenseToggle').checked;
+            const continuousTraining = document.getElementById('continuousTrainingToggle').checked;
+
+            if (enabled && continuousTraining) {
+                // Disable continuous training
+                document.getElementById('continuousTrainingToggle').checked = false;
+                addLogEntry('systemLog', 'Continuous training disabled for defense testing', 'warning');
+            }
+
+            fetch('/api/toggle_defense', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', `Defense testing ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'danger' : 'normal');
+                    if (enabled) {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #ff6b6b;">Defense Testing Mode</span>';
+                    } else {
+                        document.getElementById('aiStatus').innerHTML = 'AI Status: <span style="color: #00b894;">Ready for Training</span>';
+                    }
                 });
         }
 
@@ -409,6 +586,13 @@
                 .then(response => response.json())
                 .then(data => {
                     addLogEntry('systemLog', 'System reset completed', 'normal');
+                    document.getElementById('aiStatus').innerHTML = 'AI Status: Ready';
+
+                    // Reset toggles
+                    document.getElementById('autoAttackToggle').checked = false;
+                    document.getElementById('defenseToggle').checked = false;
+                    document.getElementById('continuousTrainingToggle').checked = false;
+
                     updateStats();
                 });
         }
@@ -427,27 +611,81 @@
                 });
         }
 
-        function toggleDefense() {
-            const enabled = document.getElementById('defenseToggle').checked;
-
-            fetch('/api/toggle_defense', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: enabled })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    addLogEntry('systemLog', `Defense system ${enabled ? 'enabled' : 'disabled'}`, 'normal');
-                });
-        }
-
         function updateSystemStatus() {
             fetch('/api/system_status')
                 .then(response => response.json())
                 .then(data => {
                     const monitorStatus = document.getElementById('monitorStatus');
                     monitorStatus.className = data.monitoring ? 'status-indicator status-active' : 'status-indicator status-inactive';
+
+                    // Update toggles based on server state
+                    document.getElementById('autoAttackToggle').checked = data.auto_attack;
+                    document.getElementById('defenseToggle').checked = data.defense_active;
+                    document.getElementById('continuousTrainingToggle').checked = data.continuous_training;
                 });
+        }
+
+        function updateAttackChart(attackData) {
+            if (!attackData.attack_types || Object.keys(attackData.attack_types).length === 0) {
+                // Show placeholder when no data
+                const layout = {
+                    title: {
+                        text: 'Attack Types Distribution',
+                        font: { color: 'white' }
+                    },
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0.2)',
+                    font: { color: 'white' },
+                    annotations: [{
+                        text: 'No attack data yet.<br>Launch some attacks to see analysis.',
+                        showarrow: false,
+                        font: { color: 'white', size: 16 },
+                        x: 0.5,
+                        y: 0.5
+                    }],
+                    xaxis: { visible: false },
+                    yaxis: { visible: false }
+                };
+
+                Plotly.newPlot('attackChart', [], layout, { responsive: true });
+                return;
+            }
+
+            const attackTypes = Object.keys(attackData.attack_types);
+            const attackCounts = Object.values(attackData.attack_types);
+
+            const trace = {
+                x: attackTypes,
+                y: attackCounts,
+                type: 'bar',
+                marker: {
+                    color: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff7675', '#a29bfe', '#fd79a8'],
+                    opacity: 0.8
+                },
+                text: attackCounts.map(count => count.toString()),
+                textposition: 'auto',
+            };
+
+            const layout = {
+                title: {
+                    text: 'Attack Types Distribution',
+                    font: { color: 'white' }
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0.2)',
+                font: { color: 'white' },
+                xaxis: {
+                    color: 'white',
+                    title: 'Attack Types'
+                },
+                yaxis: {
+                    color: 'white',
+                    title: 'Count'
+                },
+                margin: { t: 50, b: 80, l: 50, r: 20 }
+            };
+
+            Plotly.newPlot('attackChart', [trace], layout, { responsive: true });
         }
 
         function updateStats() {
@@ -458,6 +696,9 @@
                     document.getElementById('totalAttacks').textContent = data.total_attacks || 0;
                     document.getElementById('lastAttackType').textContent =
                         data.last_attack ? data.last_attack.type : 'None';
+
+                    // Update attack chart
+                    updateAttackChart(data);
                 });
 
             // Update defense stats
@@ -466,6 +707,9 @@
                 .then(data => {
                     document.getElementById('blockedIPs').textContent = data.blocked_ips || 0;
                     document.getElementById('defenseActions').textContent = data.total_actions || 0;
+
+                    // Update training samples count
+                    document.getElementById('trainingSamples').textContent = `Training Samples: ${data.training_samples || 0}`;
                 });
 
             // Update network stats
@@ -522,6 +766,9 @@
 
             // Update stats every 2 seconds
             updateInterval = setInterval(updateStats, 2000);
+
+            // Initialize attack chart with placeholder
+            updateAttackChart({});
         });
     </script>
 </body>

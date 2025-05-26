@@ -5,6 +5,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import threading
+import os  # ADAUGĂ ACEASTĂ LINIE
 
 class DefenseClassifier(nn.Module):
     def __init__(self, input_dim=9, hidden_dim=128):
@@ -49,8 +50,17 @@ class DefenseSystem:
         # Auto-learning mechanism
         self.training_data = []
         self.model_trained = False
+        self.defense_mode = False  # ADAUGĂ ACEASTĂ LINIE
         
         print("Defense System initialized")
+    
+    def set_defense_mode(self, enabled):
+        """Enable/disable defense testing mode"""
+        self.defense_mode = enabled
+        if enabled:
+            print("Defense System: TESTING MODE ENABLED")
+        else:
+            print("Defense System: Training mode enabled")
     
     def rate_limit_check(self, src_ip, current_time):
         window_size = 60  # 1 minute window
@@ -199,11 +209,12 @@ class DefenseSystem:
         # Apply defense action
         action_taken = self.apply_defense_action(network_data, threat_level, confidence)
         
-        # Store for training
-        self.training_data.append({
-            'features': network_data,
-            'label': threat_level
-        })
+        # Store for training ONLY if not in defense mode
+        if not self.defense_mode:
+            self.training_data.append({
+                'features': network_data,
+                'label': threat_level
+            })
         
         return {
             'blocked': threat_level == 2,
@@ -216,7 +227,7 @@ class DefenseSystem:
     def train_defense_model(self):
         if len(self.training_data) < 100:
             print("Not enough training data for ML model")
-            return
+            return False
         
         print("Training defense classification model...")
         
@@ -257,6 +268,7 @@ class DefenseSystem:
         
         self.model_trained = True
         print("Defense model training complete")
+        return True
     
     def get_defense_stats(self):
         threat_counts = defaultdict(int)
@@ -268,10 +280,40 @@ class DefenseSystem:
             'blocked_ips': len(self.blocked_ips),
             'threat_distribution': dict(threat_counts),
             'recent_actions': self.defense_actions[-10:] if self.defense_actions else [],
-            'model_trained': self.model_trained
+            'model_trained': self.model_trained,
+            'defense_mode': self.defense_mode,
+            'training_samples': len(self.training_data)
         }
     
     def reset_blocks(self):
         self.blocked_ips.clear()
         self.rate_limiter.clear()
+        self.defense_actions.clear()
         print("All IP blocks and rate limits cleared")
+    
+    def save_model(self, path='models/defense_system.pth'):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            torch.save({
+                'model_state_dict': self.classifier.state_dict(),
+                'model_trained': self.model_trained,
+                'training_samples': len(self.training_data)
+            }, path)
+            print(f"Defense model saved to {path}")
+            return True
+        except Exception as e:
+            print(f"Error saving defense model: {e}")
+            return False
+
+    def load_model(self, path='models/defense_system.pth'):
+        if os.path.exists(path):
+            try:
+                checkpoint = torch.load(path, map_location=self.device)
+                self.classifier.load_state_dict(checkpoint['model_state_dict'])
+                self.model_trained = checkpoint.get('model_trained', False)
+                print(f"Defense model loaded from {path}")
+                return True
+            except Exception as e:
+                print(f"Error loading defense model: {e}")
+                return False
+        return False
