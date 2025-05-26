@@ -1,6 +1,0 @@
-2025-05-26 14:37:44.648 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
-2025-05-26 14:37:44.648 | INFO     | main:startup_event:31 - Pornire Network Anomaly Detection System
-2025-05-26 14:37:44.671 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
-2025-05-26 14:37:44.671 | INFO     | src.database.connection:connect_mongodb:17 - Conectat la MongoDB
-2025-05-26 14:37:46.952 | ERROR    | src.database.connection:connect_redis:28 - Eroare conectare Redis: Error 11001 connecting to redis:6379. getaddrinfo failed.
-2025-05-26 14:37:46.952 | ERROR    | src.database.connection:connect_redis:28 - Eroare conectare Redis: Error 11001 connecting to redis:6379. getaddrinfo failed.

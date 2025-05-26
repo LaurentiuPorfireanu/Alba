@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Security AI Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            text-align: center;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.8;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel h3 {
+            margin-bottom: 15px;
+            color: #fff;
+            font-size: 1.3em;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn.success {
+            background: linear-gradient(45deg, #00b894, #00a085);
+        }
+
+        .btn.warning {
+            background: linear-gradient(45deg, #fdcb6e, #e17055);
+        }
+
+        .btn.info {
+            background: linear-gradient(45deg, #74b9ff, #0984e3);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-active {
+            background: #00b894;
+            box-shadow: 0 0 10px #00b894;
+        }
+
+        .status-inactive {
+            background: #636e72;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #74b9ff;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .log-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .log-normal {
+            background: rgba(116, 185, 255, 0.1);
+        }
+
+        .log-warning {
+            background: rgba(253, 203, 110, 0.2);
+        }
+
+        .log-danger {
+            background: rgba(255, 107, 107, 0.2);
+        }
+
+        .chart-container {
+            height: 300px;
+            margin-top: 15px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            margin: 0 10px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: #00b894;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Network Security AI System</h1>
+        <p class="subtitle">Real-time threat detection and automated defense</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- System Control Panel -->
+        <div class="panel">
+            <h3>System Control</h3>
+            <div class="controls">
+                <button class="btn success" onclick="startMonitoring()">Start Monitor</button>
+                <button class="btn warning" onclick="stopMonitoring()">Stop Monitor</button>
+                <button class="btn info" onclick="trainModels()">Train AI</button>
+                <button class="btn" onclick="resetSystem()">Reset</button>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <label>
+                    <span class="status-indicator" id="monitorStatus"></span>
+                    Network Monitoring
+                </label>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <label>
+                    Auto Attack:
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="autoAttackToggle" onchange="toggleAutoAttack()">
+                        <span class="slider"></span>
+                    </div>
+                </label>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <label>
+                    Defense System:
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="defenseToggle" checked onchange="toggleDefense()">
+                        <span class="slider"></span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Attack Simulator -->
+        <div class="panel">
+            <h3>Attack Simulator</h3>
+            <div class="controls">
+                <button class="btn" onclick="launchAttack('DDoS')">DDoS Attack</button>
+                <button class="btn" onclick="launchAttack('Port Scan')">Port Scan</button>
+                <button class="btn" onclick="launchAttack('Brute Force')">Brute Force</button>
+                <button class="btn" onclick="launchAttack()">Random Attack</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalAttacks">0</div>
+                    <div class="stat-label">Total Attacks</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="lastAttackType">None</div>
+                    <div class="stat-label">Last Attack</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Defense System -->
+        <div class="panel">
+            <h3>Defense System</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="blockedIPs">0</div>
+                    <div class="stat-label">Blocked IPs</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="defenseActions">0</div>
+                    <div class="stat-label">Actions Taken</div>
+                </div>
+            </div>
+
+            <div class="log-container" id="defenseLog">
+                <div class="log-entry log-normal">Defense system initialized...</div>
+            </div>
+        </div>
+
+        <!-- Network Statistics -->
+        <div class="panel">
+            <h3>Network Traffic</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalPackets">0</div>
+                    <div class="stat-label">Total Packets</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="anomalies">0</div>
+                    <div class="stat-label">Anomalies</div>
+                </div>
+            </div>
+
+            <div class="chart-container" id="trafficChart"></div>
+        </div>
+
+        <!-- Real-time Logs -->
+        <div class="panel">
+            <h3>System Activity</h3>
+            <div class="log-container" id="systemLog">
+                <div class="log-entry log-normal">System started successfully...</div>
+            </div>
+        </div>
+
+        <!-- Attack Statistics Chart -->
+        <div class="panel">
+            <h3>Attack Analysis</h3>
+            <div class="chart-container" id="attackChart"></div>
+        </div>
+    </div>
+
+    <script>
+        let updateInterval;
+        let anomalyCount = 0;
+
+        function addLogEntry(container, message, type = 'normal') {
+            const logContainer = document.getElementById(container);
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+
+        function startMonitoring() {
+            fetch('/api/start_monitoring')
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', data.message, 'normal');
+                    updateSystemStatus();
+                });
+        }
+
+        function stopMonitoring() {
+            fetch('/api/stop_monitoring')
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', data.message, 'warning');
+                    updateSystemStatus();
+                });
+        }
+
+        function launchAttack(type = null) {
+            const url = type ? `/api/launch_attack?type=${type}` : '/api/launch_attack';
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', `Attack launched: ${data.attack.type}`, 'danger');
+
+                    if (data.defense) {
+                        addLogEntry('defenseLog', `${data.defense.action} (${data.defense.threat_level})`,
+                            data.defense.blocked ? 'danger' : 'warning');
+                    }
+
+                    updateStats();
+                });
+        }
+
+        function trainModels() {
+            fetch('/api/train_models')
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', 'AI model training started...', 'normal');
+                });
+        }
+
+        function resetSystem() {
+            fetch('/api/reset_system')
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', 'System reset completed', 'normal');
+                    updateStats();
+                });
+        }
+
+        function toggleAutoAttack() {
+            const enabled = document.getElementById('autoAttackToggle').checked;
+
+            fetch('/api/auto_attack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled, interval: 3 })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', `Auto attack ${enabled ? 'enabled' : 'disabled'}`, 'normal');
+                });
+        }
+
+        function toggleDefense() {
+            const enabled = document.getElementById('defenseToggle').checked;
+
+            fetch('/api/toggle_defense', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    addLogEntry('systemLog', `Defense system ${enabled ? 'enabled' : 'disabled'}`, 'normal');
+                });
+        }
+
+        function updateSystemStatus() {
+            fetch('/api/system_status')
+                .then(response => response.json())
+                .then(data => {
+                    const monitorStatus = document.getElementById('monitorStatus');
+                    monitorStatus.className = data.monitoring ? 'status-indicator status-active' : 'status-indicator status-inactive';
+                });
+        }
+
+        function updateStats() {
+            // Update attack stats
+            fetch('/api/attack_stats')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalAttacks').textContent = data.total_attacks || 0;
+                    document.getElementById('lastAttackType').textContent =
+                        data.last_attack ? data.last_attack.type : 'None';
+                });
+
+            // Update defense stats
+            fetch('/api/defense_stats')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('blockedIPs').textContent = data.blocked_ips || 0;
+                    document.getElementById('defenseActions').textContent = data.total_actions || 0;
+                });
+
+            // Update network stats
+            fetch('/api/network_stats')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalPackets').textContent = data.stats.total_packets || 0;
+                    updateTrafficChart(data.recent_traffic);
+                });
+
+            // Check for anomalies
+            fetch('/api/detect_anomaly')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.anomaly_detected) {
+                        anomalyCount++;
+                        addLogEntry('systemLog', `Anomaly detected! Confidence: ${data.confidence.toFixed(2)}`, 'danger');
+                    }
+                    document.getElementById('anomalies').textContent = anomalyCount;
+                });
+        }
+
+        function updateTrafficChart(trafficData) {
+            if (!trafficData || trafficData.length === 0) return;
+
+            const timestamps = trafficData.map(d => new Date(d.timestamp * 1000));
+            const packetSizes = trafficData.map(d => d.packet_size);
+
+            const trace = {
+                x: timestamps,
+                y: packetSizes,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Packet Size',
+                line: { color: '#74b9ff' }
+            };
+
+            const layout = {
+                title: 'Real-time Traffic',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0.2)',
+                font: { color: 'white' },
+                xaxis: { color: 'white' },
+                yaxis: { color: 'white' }
+            };
+
+            Plotly.newPlot('trafficChart', [trace], layout, { responsive: true });
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function () {
+            updateSystemStatus();
+            updateStats();
+
+            // Update stats every 2 seconds
+            updateInterval = setInterval(updateStats, 2000);
+        });
+    </script>
+</body>
+
+</html>

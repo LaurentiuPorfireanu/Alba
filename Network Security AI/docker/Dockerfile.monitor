@@ -1,0 +1,17 @@
+FROM python:3.11-alpine
+
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libpcap-dev \
+    tcpdump \
+    tshark
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir scapy
+
+COPY docker/network_monitor.py .
+
+CMD ["python", "network_monitor.py"]

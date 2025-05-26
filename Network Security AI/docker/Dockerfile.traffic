@@ -1,0 +1,16 @@
+FROM python:3.11-alpine
+
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libpcap-dev \
+    tcpdump
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir requests scapy
+
+COPY docker/traffic_generator.py .
+
+CMD ["python", "traffic_generator.py"]
