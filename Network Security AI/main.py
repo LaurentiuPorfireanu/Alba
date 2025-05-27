@@ -16,6 +16,7 @@ def main():
     os.makedirs('data/raw', exist_ok=True)
     os.makedirs('data/processed', exist_ok=True)
     os.makedirs('data/logs', exist_ok=True)
+    os.makedirs('models', exist_ok=True)
     
     # Initialize AI components
     print("Loading anomaly detector...")
@@ -30,6 +31,11 @@ def main():
     print("Starting web application...")
     # Start web application
     app = create_app(detector, attacker, defender)
+    
+    if app is None:
+        print("ERROR: Failed to create Flask app!")
+        return
+    
     print("Server running at http://localhost:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)
 
