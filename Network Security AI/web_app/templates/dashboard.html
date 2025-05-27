@@ -451,6 +451,15 @@
                     <button class="btn testing" onclick="launchAttack('DDoS')">DDoS Attack</button>
                     <button class="btn testing" onclick="launchAttack('Port Scan')">Port Scan</button>
                     <button class="btn testing" onclick="launchAttack('Brute Force')">Brute Force</button>
+                    <button class="btn testing" onclick="launchAttack('SQL Injection')">SQL Injection</button>
+                </div>
+                <div class="controls">
+                    <button class="btn testing" onclick="launchAttack('XSS')">XSS Attack</button>
+                    <button class="btn testing" onclick="launchAttack('Malware')">Malware</button>
+                    <button class="btn testing" onclick="launchAttack('Phishing')">Phishing</button>
+                    <button class="btn testing" onclick="launchAttack('Man-in-Middle')">Man-in-Middle</button>
+                </div>
+                <div class="controls">
                     <button class="btn testing" onclick="launchAttack()">Random Attack</button>
                 </div>
 
@@ -567,6 +576,14 @@
 
             currentTab = tabName;
             updateModeIndicator();
+
+            // Clear and update stats when switching tabs
+            if (tabName === 'testing') {
+                updateTestingStats();
+                updateTestingChart();
+            } else if (tabName === 'training') {
+                updateTrainingStats();
+            }
         }
 
         function updateModeIndicator() {
@@ -686,7 +703,7 @@
                 .then(data => {
                     if (data.success) {
                         document.getElementById('trainingStatus').innerHTML = 'Status: <span style="color: #00b894;">Models Saved Successfully</span>';
-                        addLogEntry('trainingLog', 'AI models saved successfully', 'normal');
+                        addLogEntry('trainingLog', `${data.message}`, 'normal');
                     } else {
                         addLogEntry('trainingLog', `Error saving models: ${data.message}`, 'danger');
                     }
@@ -702,11 +719,15 @@
                     if (data.success) {
                         addLogEntry('trainingLog', `Generated ${data.count} ${type} samples`, 'normal');
                         updateTrainingStats();
+                    } else {
+                        addLogEntry('trainingLog', `Error: ${data.message}`, 'danger');
                     }
                 })
-                .catch(() => {
+                .catch((error) => {
+                    console.log('Training data generation failed:', error);
+                    // Fallback for demo purposes
                     const count = Math.floor(Math.random() * 500) + 100;
-                    addLogEntry('trainingLog', `Generated ${count} ${type} samples`, 'normal');
+                    addLogEntry('trainingLog', `Generated ${count} ${type} samples (demo mode)`, 'normal');
 
                     const currentNormal = parseInt(document.getElementById('normalSamples').textContent) || 0;
                     const currentAttack = parseInt(document.getElementById('attackSamples').textContent) || 0;
@@ -744,6 +765,8 @@
                 .then(response => response.json())
                 .then(data => {
                     addLogEntry('defenseLog', 'Testing mode enabled - Defense systems online', 'normal');
+                    // Reset testing statistics display
+                    resetTestingDisplay();
                 });
         }
 
@@ -766,6 +789,17 @@
                 .then(data => {
                     addLogEntry('defenseLog', 'Testing mode disabled', 'warning');
                 });
+        }
+
+        function resetTestingDisplay() {
+            // Reset testing display values
+            document.getElementById('totalAttacks').textContent = '0';
+            document.getElementById('blockedAttacks').textContent = '0';
+            document.getElementById('detectionRate').textContent = '0%';
+            document.getElementById('lastAttackType').textContent = 'None';
+
+            // Clear and update testing chart
+            updateTestingChart();
         }
 
         function toggleAutoAttack() {
@@ -807,6 +841,7 @@
                     }
 
                     updateTestingStats();
+                    updateTestingChart();
                 });
         }
 
@@ -815,7 +850,9 @@
                 .then(response => response.json())
                 .then(data => {
                     addLogEntry('defenseLog', 'Test results reset', 'normal');
+                    resetTestingDisplay();
                     updateTestingStats();
+                    updateTestingChart();
                 });
         }
 
@@ -844,13 +881,21 @@
                 .then(data => {
                     addLogEntry('systemLog', 'System reset completed', 'normal');
 
+                    // Reset UI elements
                     document.getElementById('autoAttackToggle').checked = false;
                     document.getElementById('enableTestingBtn').style.display = 'inline-block';
                     document.getElementById('disableTestingBtn').style.display = 'none';
                     document.getElementById('trainingProgress').style.display = 'none';
 
+                    // Reset training data
                     trainingData = { epochs: [], accuracy: [], loss: [] };
 
+                    // Reset active states
+                    trainingActive = false;
+                    testingActive = false;
+                    updateModeIndicator();
+
+                    // Update all stats
                     updateStats();
                 });
         }
@@ -880,14 +925,23 @@
                     if (monitorStatus) {
                         monitorStatus.className = data.monitoring ? 'status-indicator status-active' : 'status-indicator status-inactive';
                     }
+
+                    // Update active states from server
+                    trainingActive = data.training_mode && data.training_in_progress;
+                    testingActive = data.testing_mode;
+                    updateModeIndicator();
                 })
                 .catch(error => console.log('Status update failed:', error));
         }
 
         function updateStats() {
-            updateTrainingStats();
-            updateTestingStats();
-            updateMonitoringStats();
+            if (currentTab === 'training') {
+                updateTrainingStats();
+            } else if (currentTab === 'testing') {
+                updateTestingStats();
+            } else if (currentTab === 'monitoring') {
+                updateMonitoringStats();
+            }
         }
 
         function updateTrainingStats() {
@@ -903,17 +957,13 @@
                         document.getElementById('trainingEpochs').textContent = data.epochs || 0;
                     }
                 })
-                .catch(() => {
-                    fetch('/api/defense_stats')
-                        .then(response => response.json())
-                        .then(data => {
-                            document.getElementById('trainingSamples').textContent = `Training Samples: ${data.training_samples || 0}`;
-                        })
-                        .catch(error => console.log('Training stats failed:', error));
-                });
+                .catch(error => console.log('Training stats failed:', error));
         }
 
         function updateTestingStats() {
+            if (!testingActive) return;
+
+            // Get attack statistics (testing-specific)
             fetch('/api/attack_stats')
                 .then(response => response.json())
                 .then(data => {
@@ -923,14 +973,20 @@
                 })
                 .catch(error => console.log('Attack stats failed:', error));
 
+            // Get defense statistics (testing-specific)
             fetch('/api/defense_stats')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('blockedAttacks').textContent = data.total_actions || 0;
+                    // Use testing-specific blocked attacks count
+                    const blockedAttacks = data.testing_blocked || 0;
+                    document.getElementById('blockedAttacks').textContent = blockedAttacks;
 
-                    const totalAttacks = parseInt(document.getElementById('totalAttacks').textContent) || 1;
-                    const blockedAttacks = data.total_actions || 0;
-                    const detectionRate = Math.round((blockedAttacks / totalAttacks) * 100);
+                    // Calculate detection rate from testing data
+                    const totalAttacks = parseInt(document.getElementById('totalAttacks').textContent) || 0;
+                    let detectionRate = 0;
+                    if (totalAttacks > 0) {
+                        detectionRate = Math.round((blockedAttacks / totalAttacks) * 100);
+                    }
                     document.getElementById('detectionRate').textContent = `${detectionRate}%`;
                 })
                 .catch(error => console.log('Defense stats failed:', error));
@@ -1044,38 +1100,184 @@
         }
 
         function updateTestingChart() {
-            const categories = ['DDoS', 'Port Scan', 'Brute Force', 'XSS', 'SQL Injection'];
-            const detected = [95, 88, 92, 76, 84];
-            const missed = [5, 12, 8, 24, 16];
+            if (!testingActive) {
+                // Show placeholder chart when not in testing mode
+                const layout = {
+                    title: 'Attack Detection Results',
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0.2)',
+                    font: { color: 'white' },
+                    xaxis: { color: 'white' },
+                    yaxis: { color: 'white' },
+                    annotations: [{
+                        text: 'Enable Testing Mode to View Results',
+                        xref: 'paper',
+                        yref: 'paper',
+                        x: 0.5,
+                        y: 0.5,
+                        xanchor: 'center',
+                        yanchor: 'center',
+                        showarrow: false,
+                        font: { color: 'white', size: 16 }
+                    }],
+                    margin: { t: 50, b: 80, l: 50, r: 20 }
+                };
+                Plotly.newPlot('testingChart', [], layout, { responsive: true });
+                return;
+            }
 
-            const trace1 = {
-                x: categories,
-                y: detected,
-                name: 'Detected',
-                type: 'bar',
-                marker: { color: '#00b894' }
-            };
+            // Get real testing chart data from server
+            fetch('/api/testing_chart_data')
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success && result.data && result.data.categories.length > 0) {
+                        const data = result.data;
 
-            const trace2 = {
-                x: categories,
-                y: missed,
-                name: 'Missed',
-                type: 'bar',
-                marker: { color: '#ff6b6b' }
-            };
+                        const trace1 = {
+                            x: data.categories,
+                            y: data.detected,
+                            name: 'Detected (%)',
+                            type: 'bar',
+                            marker: { color: '#00b894' }
+                        };
 
-            const layout = {
-                title: 'Attack Detection Results (%)',
-                paper_bgcolor: 'rgba(0,0,0,0)',
-                plot_bgcolor: 'rgba(0,0,0,0.2)',
-                font: { color: 'white' },
-                xaxis: { color: 'white' },
-                yaxis: { color: 'white' },
-                barmode: 'stack',
-                margin: { t: 50, b: 80, l: 50, r: 20 }
-            };
+                        const trace2 = {
+                            x: data.categories,
+                            y: data.missed,
+                            name: 'Missed (%)',
+                            type: 'bar',
+                            marker: { color: '#ff6b6b' }
+                        };
 
-            Plotly.newPlot('testingChart', [trace1, trace2], layout, { responsive: true });
+                        const layout = {
+                            title: 'Attack Detection Results (%)',
+                            paper_bgcolor: 'rgba(0,0,0,0)',
+                            plot_bgcolor: 'rgba(0,0,0,0.2)',
+                            font: { color: 'white' },
+                            xaxis: {
+                                color: 'white',
+                                tickangle: -45,
+                                automargin: true
+                            },
+                            yaxis: {
+                                color: 'white',
+                                range: [0, 100],
+                                title: 'Percentage (%)'
+                            },
+                            barmode: 'stack',
+                            legend: {
+                                font: { color: 'white' },
+                                orientation: 'h',
+                                x: 0.5,
+                                xanchor: 'center',
+                                y: -0.2
+                            },
+                            margin: { t: 50, b: 100, l: 50, r: 20 }
+                        };
+
+                        Plotly.newPlot('testingChart', [trace1, trace2], layout, { responsive: true });
+                    } else {
+                        // Show default chart with all attack types but no data yet
+                        const allAttackTypes = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle'];
+                        const detectedData = new Array(allAttackTypes.length).fill(0);
+                        const missedData = new Array(allAttackTypes.length).fill(0);
+
+                        const trace1 = {
+                            x: allAttackTypes,
+                            y: detectedData,
+                            name: 'Detected (%)',
+                            type: 'bar',
+                            marker: { color: '#00b894' }
+                        };
+
+                        const trace2 = {
+                            x: allAttackTypes,
+                            y: missedData,
+                            name: 'Missed (%)',
+                            type: 'bar',
+                            marker: { color: '#ff6b6b' }
+                        };
+
+                        const layout = {
+                            title: 'Attack Detection Results (%) - No attacks tested yet',
+                            paper_bgcolor: 'rgba(0,0,0,0)',
+                            plot_bgcolor: 'rgba(0,0,0,0.2)',
+                            font: { color: 'white' },
+                            xaxis: {
+                                color: 'white',
+                                tickangle: -45,
+                                automargin: true
+                            },
+                            yaxis: {
+                                color: 'white',
+                                range: [0, 100],
+                                title: 'Percentage (%)'
+                            },
+                            barmode: 'stack',
+                            legend: {
+                                font: { color: 'white' },
+                                orientation: 'h',
+                                x: 0.5,
+                                xanchor: 'center',
+                                y: -0.2
+                            },
+                            margin: { t: 50, b: 100, l: 50, r: 20 }
+                        };
+
+                        Plotly.newPlot('testingChart', [trace1, trace2], layout, { responsive: true });
+                    }
+                })
+                .catch(error => {
+                    console.log('Testing chart update failed, showing default chart:', error);
+                    // Fallback - show all attack types with zero data
+                    const allAttackTypes = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle'];
+                    const detectedData = new Array(allAttackTypes.length).fill(0);
+                    const missedData = new Array(allAttackTypes.length).fill(0);
+
+                    const trace1 = {
+                        x: allAttackTypes,
+                        y: detectedData,
+                        name: 'Detected (%)',
+                        type: 'bar',
+                        marker: { color: '#00b894' }
+                    };
+
+                    const trace2 = {
+                        x: allAttackTypes,
+                        y: missedData,
+                        name: 'Missed (%)',
+                        type: 'bar',
+                        marker: { color: '#ff6b6b' }
+                    };
+
+                    const layout = {
+                        title: 'Attack Detection Results (%) - Connecting to server...',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0.2)',
+                        font: { color: 'white' },
+                        xaxis: {
+                            color: 'white',
+                            tickangle: -45,
+                            automargin: true
+                        },
+                        yaxis: {
+                            color: 'white',
+                            range: [0, 100],
+                            title: 'Percentage (%)'
+                        },
+                        barmode: 'stack',
+                        legend: {
+                            font: { color: 'white' },
+                            orientation: 'h',
+                            x: 0.5,
+                            xanchor: 'center',
+                            y: -0.2
+                        },
+                        margin: { t: 50, b: 100, l: 50, r: 20 }
+                    };
+
+                    Plotly.newPlot('testingChart', [trace1, trace2], layout, { responsive: true });
+                });
         }
 
         function updateRealtimeChart() {
@@ -1140,11 +1342,17 @@
             updateTestingChart();
             updateRealtimeChart();
 
+            // Set up periodic updates
             updateInterval = setInterval(() => {
+                updateSystemStatus();
+
                 if (currentTab === 'training') {
                     updateTrainingStats();
                 } else if (currentTab === 'testing') {
                     updateTestingStats();
+                    if (testingActive) {
+                        updateTestingChart(); // Update chart more frequently in testing mode
+                    }
                 } else if (currentTab === 'monitoring') {
                     updateMonitoringStats();
                     updateRealtimeChart();

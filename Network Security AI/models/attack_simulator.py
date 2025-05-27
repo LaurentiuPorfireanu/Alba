@@ -83,28 +83,124 @@ class AttackSimulator:
             'packet_interval': random.uniform(0.1, 1.0)
         }
     
+    def generate_sql_injection(self):
+        return {
+            'packet_size': random.randint(200, 500),
+            'duration': random.uniform(0.5, 2.0),
+            'protocol': 6,
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 3306, 1433]),
+            'packet_count': random.randint(5, 50),
+            'byte_count': random.randint(1000, 25000),
+            'flow_rate': random.uniform(5, 200),
+            'packet_interval': random.uniform(0.05, 0.5)
+        }
+    
+    def generate_xss_attack(self):
+        return {
+            'packet_size': random.randint(150, 300),
+            'duration': random.uniform(0.2, 1.5),
+            'protocol': 6,
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 8080]),
+            'packet_count': random.randint(3, 30),
+            'byte_count': random.randint(450, 9000),
+            'flow_rate': random.uniform(2, 150),
+            'packet_interval': random.uniform(0.02, 0.3)
+        }
+    
+    def generate_malware_attack(self):
+        return {
+            'packet_size': random.randint(500, 1500),
+            'duration': random.uniform(2.0, 10.0),
+            'protocol': random.choice([6, 17]),
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 53, 8080, 9999]),
+            'packet_count': random.randint(20, 200),
+            'byte_count': random.randint(10000, 300000),
+            'flow_rate': random.uniform(50, 2000),
+            'packet_interval': random.uniform(0.5, 2.0)
+        }
+    
+    def generate_phishing_attack(self):
+        return {
+            'packet_size': random.randint(300, 800),
+            'duration': random.uniform(1.0, 5.0),
+            'protocol': 6,
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 25, 110, 143]),
+            'packet_count': random.randint(5, 100),
+            'byte_count': random.randint(1500, 80000),
+            'flow_rate': random.uniform(10, 800),
+            'packet_interval': random.uniform(0.1, 1.0)
+        }
+    
+    def generate_man_in_middle(self):
+        return {
+            'packet_size': random.randint(100, 400),
+            'duration': random.uniform(0.5, 3.0),
+            'protocol': random.choice([6, 17]),
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 21, 23, 25]),
+            'packet_count': random.randint(10, 150),
+            'byte_count': random.randint(1000, 60000),
+            'flow_rate': random.uniform(20, 1000),
+            'packet_interval': random.uniform(0.05, 0.5)
+        }
+    
     def launch_attack(self, attack_type=None):
         if attack_type is None:
             attack_type = random.choice(self.attack_types)
         
+        # Ensure the attack type is valid
+        if attack_type not in self.attack_types:
+            print(f"Unknown attack type: {attack_type}, using random")
+            attack_type = random.choice(self.attack_types)
+        
         attack_data = None
         
+        # Generate specific attack data based on type
         if attack_type == 'DDoS':
             attack_data = self.generate_ddos_attack()
         elif attack_type == 'Port Scan':
             attack_data = self.generate_port_scan()
         elif attack_type == 'Brute Force':
             attack_data = self.generate_brute_force()
+        elif attack_type == 'SQL Injection':
+            attack_data = self.generate_sql_injection()
+        elif attack_type == 'XSS':
+            attack_data = self.generate_xss_attack()
+        elif attack_type == 'Malware':
+            attack_data = self.generate_malware_attack()
+        elif attack_type == 'Phishing':
+            attack_data = self.generate_phishing_attack()
+        elif attack_type == 'Man-in-Middle':
+            attack_data = self.generate_man_in_middle()
         else:
-            attack_data = self.generate_normal_traffic()
-            attack_data['packet_count'] *= random.randint(2, 5)
-            attack_data['flow_rate'] *= random.uniform(2, 10)
+            # Fallback to normal traffic with modifications
+            print(f"Warning: Unknown attack type {attack_type}, generating DDoS instead")
+            attack_type = 'DDoS'
+            attack_data = self.generate_ddos_attack()
+        
+        # Assign severity based on attack type
+        severity_map = {
+            'DDoS': ['High', 'Critical'],
+            'Port Scan': ['Low', 'Medium'],
+            'Brute Force': ['Medium', 'High'],
+            'SQL Injection': ['High', 'Critical'],
+            'XSS': ['Medium', 'High'],
+            'Malware': ['High', 'Critical'],
+            'Phishing': ['Medium', 'High'],
+            'Man-in-Middle': ['High', 'Critical']
+        }
+        
+        severity = random.choice(severity_map.get(attack_type, ['Medium', 'High']))
         
         attack_info = {
             'type': attack_type,
             'timestamp': datetime.now(),
             'data': attack_data,
-            'severity': random.choice(['Low', 'Medium', 'High', 'Critical'])
+            'severity': severity
         }
         
         self.attack_history.append(attack_info)
@@ -114,7 +210,11 @@ class AttackSimulator:
     
     def get_attack_stats(self):
         if not self.attack_history:
-            return {}
+            return {
+                'total_attacks': 0,
+                'attack_types': {},
+                'last_attack': None
+            }
             
         attack_counts = {}
         for attack in self.attack_history:

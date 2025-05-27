@@ -47,18 +47,26 @@ class DefenseSystem:
         self.defense_actions = []
         self.threat_levels = {0: 'Normal', 1: 'Suspicious', 2: 'Malicious'}
         
-        # Training and testing modes
+        # Training and testing modes - COMPLETELY SEPARATED
         self.training_data = []
         self.model_trained = False
         self.system_mode = 'idle'  # 'idle', 'training', 'testing'
         
-        # Testing statistics
-        self.test_stats = {
+        # SEPARATE statistics for training and testing
+        self.training_stats = {
+            'attacks_processed': 0,
+            'model_accuracy': 0,
+            'training_samples': 0
+        }
+        
+        self.testing_stats = {
             'total_tests': 0,
             'true_positives': 0,
             'false_positives': 0,
             'true_negatives': 0,
-            'false_negatives': 0
+            'false_negatives': 0,
+            'attacks_blocked': 0,
+            'attacks_detected': 0
         }
         
         print("Defense System initialized in idle mode")
@@ -68,12 +76,24 @@ class DefenseSystem:
         valid_modes = ['idle', 'training', 'testing']
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode. Must be one of: {valid_modes}")
-            
+        
+        previous_mode = self.system_mode
         self.system_mode = mode
-        print(f"Defense System mode set to: {mode.upper()}")
+        
+        print(f"Defense System mode changed: {previous_mode.upper()} -> {mode.upper()}")
         
         if mode == 'testing':
             print("Defense System: TESTING MODE ENABLED - Real-time threat detection active")
+            # Reset testing statistics when entering testing mode
+            self.testing_stats = {
+                'total_tests': 0,
+                'true_positives': 0,
+                'false_positives': 0,
+                'true_negatives': 0,
+                'false_negatives': 0,
+                'attacks_blocked': 0,
+                'attacks_detected': 0
+            }
         elif mode == 'training':
             print("Defense System: TRAINING MODE ENABLED - Collecting training data")
         else:
@@ -236,6 +256,11 @@ class DefenseSystem:
             self.blocked_ips.add(src_ip)
             action_taken = f"BLOCKED IP: {src_ip} (Malicious threat detected)"
             
+            # Update testing statistics
+            if self.is_testing_mode():
+                self.testing_stats['attacks_blocked'] += 1
+                self.testing_stats['attacks_detected'] += 1
+            
         elif threat_level == 1:  # Suspicious
             # Apply rate limiting
             if src_ip not in self.rate_limiter:
@@ -247,8 +272,15 @@ class DefenseSystem:
                 if self.rate_limiter[src_ip]['count'] > 10:
                     self.blocked_ips.add(src_ip)
                     action_taken = f"BLOCKED IP: {src_ip} (Escalated from suspicious)"
+                    
+                    if self.is_testing_mode():
+                        self.testing_stats['attacks_blocked'] += 1
+                        self.testing_stats['attacks_detected'] += 1
                 else:
                     action_taken = f"RATE LIMITED: {src_ip} (Suspicious activity)"
+                    
+                    if self.is_testing_mode():
+                        self.testing_stats['attacks_detected'] += 1
         
         # Log defense action
         if action_taken:
@@ -263,7 +295,7 @@ class DefenseSystem:
             }
             
             self.defense_actions.append(defense_log)
-            print(f"Defense Action: {action_taken} - Threat: {self.threat_levels[threat_level]} ({confidence:.2f})")
+            print(f"Defense Action [{self.system_mode.upper()}]: {action_taken} - Threat: {self.threat_levels[threat_level]} ({confidence:.2f})")
         
         return action_taken
     
@@ -280,33 +312,41 @@ class DefenseSystem:
                 'action': 'Traffic dropped - IP blocked',
                 'threat_level': 'Blocked',
                 'confidence': 1.0,
-                'src_ip': src_ip
+                'src_ip': src_ip,
+                'system_mode': self.system_mode
             }
         
         # Classify threat
         threat_level, confidence = self.classify_threat(network_data)
         
-        # Apply defense action only in testing mode
+        # Apply defense action based on current mode
         action_taken = None
         if self.is_testing_mode():
+            # Full defense in testing mode
             action_taken = self.apply_defense_action(network_data, threat_level, confidence)
             
-            # Update test statistics
-            self.test_stats['total_tests'] += 1
+            # Update testing statistics
+            self.testing_stats['total_tests'] += 1
             if threat_level > 0:  # Suspicious or Malicious
-                self.test_stats['true_positives'] += 1
+                self.testing_stats['true_positives'] += 1
             else:
-                self.test_stats['true_negatives'] += 1
-        
-        # Store training data only in training mode
-        if self.is_training_mode():
+                self.testing_stats['true_negatives'] += 1
+                
+        elif self.is_training_mode():
+            # Store training data only in training mode
             self.training_data.append({
                 'features': network_data,
                 'label': threat_level
             })
+            self.training_stats['attacks_processed'] += 1
+            action_taken = f"Training data collected (label: {self.threat_levels[threat_level]})"
+        
+        else:
+            # Idle mode - just analyze but don't take action
+            action_taken = f"Analyzed only - {self.threat_levels[threat_level]} detected"
         
         return {
-            'blocked': threat_level == 2,
+            'blocked': threat_level == 2 and self.is_testing_mode(),
             'action': action_taken or 'Analyzed',
             'threat_level': self.threat_levels[threat_level],
             'confidence': confidence,
@@ -354,6 +394,7 @@ class DefenseSystem:
             predicted_classes = torch.argmax(predictions, dim=1)
             accuracy = (predicted_classes == y_tensor).float().mean().item()
             print(f'Training accuracy: {accuracy:.4f}')
+            self.training_stats['model_accuracy'] = accuracy * 100
         
         self.model_trained = True
         print("Defense model training completed successfully")
@@ -365,56 +406,92 @@ class DefenseSystem:
         for action in self.defense_actions:
             threat_counts[action['threat_level']] += 1
         
-        # Calculate detection metrics
-        total_tests = self.test_stats['total_tests']
-        detection_rate = 0
-        false_positive_rate = 0
-        
-        if total_tests > 0:
-            tp = self.test_stats['true_positives']
-            tn = self.test_stats['true_negatives']
-            fp = self.test_stats['false_positives']
-            fn = self.test_stats['false_negatives']
-            
-            detection_rate = (tp / (tp + fn)) * 100 if (tp + fn) > 0 else 0
-            false_positive_rate = (fp / (fp + tn)) * 100 if (fp + tn) > 0 else 0
-        
-        return {
+        # Base statistics
+        base_stats = {
             'total_actions': len(self.defense_actions),
             'blocked_ips': len(self.blocked_ips),
             'threat_distribution': dict(threat_counts),
             'recent_actions': self.defense_actions[-10:] if self.defense_actions else [],
             'model_trained': self.model_trained,
             'system_mode': self.system_mode,
-            'training_samples': len(self.training_data),
-            'test_statistics': {
-                'total_tests': total_tests,
-                'detection_rate': round(detection_rate, 2),
-                'false_positive_rate': round(false_positive_rate, 2),
-                'true_positives': self.test_stats['true_positives'],
-                'true_negatives': self.test_stats['true_negatives'],
-                'false_positives': self.test_stats['false_positives'],
-                'false_negatives': self.test_stats['false_negatives']
-            }
+            'training_samples': len(self.training_data)
         }
+        
+        # Add mode-specific statistics
+        if self.is_testing_mode():
+            # Calculate detection metrics for testing
+            total_tests = self.testing_stats['total_tests']
+            detection_rate = 0
+            false_positive_rate = 0
+            
+            if total_tests > 0:
+                tp = self.testing_stats['true_positives']
+                tn = self.testing_stats['true_negatives']
+                fp = self.testing_stats['false_positives']
+                fn = self.testing_stats['false_negatives']
+                
+                detection_rate = (tp / (tp + fn)) * 100 if (tp + fn) > 0 else 0
+                false_positive_rate = (fp / (fp + tn)) * 100 if (fp + tn) > 0 else 0
+            
+            base_stats.update({
+                'testing_blocked': self.testing_stats['attacks_blocked'],
+                'testing_detected': self.testing_stats['attacks_detected'],
+                'test_statistics': {
+                    'total_tests': total_tests,
+                    'detection_rate': round(detection_rate, 2),
+                    'false_positive_rate': round(false_positive_rate, 2),
+                    'true_positives': self.testing_stats['true_positives'],
+                    'true_negatives': self.testing_stats['true_negatives'],
+                    'false_positives': self.testing_stats['false_positives'],
+                    'false_negatives': self.testing_stats['false_negatives']
+                }
+            })
+            
+        elif self.is_training_mode():
+            base_stats.update({
+                'training_attacks': self.training_stats['attacks_processed'],
+                'model_accuracy': self.training_stats['model_accuracy'],
+                'training_statistics': self.training_stats
+            })
+        
+        return base_stats
     
     def reset_blocks(self):
         """Reset all blocks and rate limits"""
         self.blocked_ips.clear()
         self.rate_limiter.clear()
         self.defense_actions.clear()
-        self.test_stats = {
-            'total_tests': 0,
-            'true_positives': 0,
-            'false_positives': 0,
-            'true_negatives': 0,
-            'false_negatives': 0
-        }
-        print("All IP blocks, rate limits, and test statistics cleared")
+        
+        # Reset only current mode's statistics
+        if self.is_testing_mode():
+            self.testing_stats = {
+                'total_tests': 0,
+                'true_positives': 0,
+                'false_positives': 0,
+                'true_negatives': 0,
+                'false_negatives': 0,
+                'attacks_blocked': 0,
+                'attacks_detected': 0
+            }
+            print("Testing statistics and blocks cleared")
+        elif self.is_training_mode():
+            self.training_stats = {
+                'attacks_processed': 0,
+                'model_accuracy': 0,
+                'training_samples': len(self.training_data)  # Keep training data count
+            }
+            print("Training statistics cleared (training data preserved)")
+        else:
+            print("All blocks and rate limits cleared")
     
     def reset_training_data(self):
         """Reset training data"""
         self.training_data.clear()
+        self.training_stats = {
+            'attacks_processed': 0,
+            'model_accuracy': 0,
+            'training_samples': 0
+        }
         print("Training data cleared")
     
     def save_model(self, path='models/defense_system.pth'):
@@ -427,7 +504,9 @@ class DefenseSystem:
                 'training_samples': len(self.training_data),
                 'system_mode': self.system_mode,
                 'threat_levels': self.threat_levels,
-                'connection_limits': self.connection_limits
+                'connection_limits': self.connection_limits,
+                'training_stats': self.training_stats,
+                'testing_stats': self.testing_stats
             }, path)
             print(f"Defense model saved to {path}")
             return True
@@ -446,6 +525,12 @@ class DefenseSystem:
                 # Load additional configuration if available
                 if 'connection_limits' in checkpoint:
                     self.connection_limits = checkpoint['connection_limits']
+                
+                if 'training_stats' in checkpoint:
+                    self.training_stats = checkpoint['training_stats']
+                
+                if 'testing_stats' in checkpoint:
+                    self.testing_stats = checkpoint['testing_stats']
                 
                 print(f"Defense model loaded from {path}")
                 print(f"Model trained: {self.model_trained}")
@@ -467,5 +552,7 @@ class DefenseSystem:
             'defense_actions_count': len(self.defense_actions),
             'device': str(self.device),
             'connection_limits': self.connection_limits,
-            'threat_levels': self.threat_levels
+            'threat_levels': self.threat_levels,
+            'training_stats': self.training_stats,
+            'testing_stats': self.testing_stats
         }

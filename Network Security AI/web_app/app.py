@@ -16,24 +16,37 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     from src.network_monitor import NetworkMonitor
     network_monitor = NetworkMonitor()
     
-    # Global state with separated modes
+    # Global state with COMPLETELY separated modes
     app_state = {
-        # System states
+        # System states - NEVER mix training and testing
         'simulation_running': False,
         'training_mode': False,
         'testing_mode': False,
         
-        # Training specific
+        # Training specific data - ISOLATED
         'training_in_progress': False,
         'continuous_training': False,
         'training_thread_running': False,
         'training_data_generated': {'normal': 0, 'attack': 0},
         'training_metrics': {'accuracy': [], 'loss': [], 'epochs': 0},
+        'training_attacks': 0,  # SEPARATE counter for training
         
-        # Testing specific
+        # Testing specific data - ISOLATED  
         'auto_attack': False,
         'attack_interval': 5,
-        'test_results': {'total_tests': 0, 'successful_detections': 0},
+        'testing_attacks': 0,  # SEPARATE counter for testing
+        'testing_blocked': 0,  # SEPARATE counter for testing
+        'testing_results': {'total_tests': 0, 'successful_detections': 0},
+        'testing_attack_types': {  # Track specific attack types in testing
+            'DDoS': {'total': 0, 'blocked': 0},
+            'Port Scan': {'total': 0, 'blocked': 0}, 
+            'Brute Force': {'total': 0, 'blocked': 0},
+            'SQL Injection': {'total': 0, 'blocked': 0},
+            'XSS': {'total': 0, 'blocked': 0},
+            'Malware': {'total': 0, 'blocked': 0},
+            'Phishing': {'total': 0, 'blocked': 0},
+            'Man-in-Middle': {'total': 0, 'blocked': 0}
+        },
         
         # General
         'defense_active': False
@@ -61,28 +74,36 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     
     @app.route('/api/reset_system')
     def reset_system():
-        # Reset all systems
+        # Reset defense system but keep training/testing data separate
         defense_system.reset_blocks()
-        attack_simulator.attack_history.clear()
         
-        # Reset app state
-        app_state['training_mode'] = False
-        app_state['testing_mode'] = False
-        app_state['auto_attack'] = False
-        app_state['simulation_running'] = False
-        app_state['continuous_training'] = False
-        app_state['defense_active'] = False
-        app_state['training_in_progress'] = False
-        app_state['test_results'] = {'total_tests': 0, 'successful_detections': 0}
-        app_state['training_data_generated'] = {'normal': 0, 'attack': 0}
-        app_state['training_metrics'] = {'accuracy': [], 'loss': [], 'epochs': 0}
+        # Reset ONLY the current mode's data
+        if app_state['testing_mode']:
+            # Reset only testing data
+            app_state['testing_attacks'] = 0
+            app_state['testing_blocked'] = 0
+            app_state['testing_results'] = {'total_tests': 0, 'successful_detections': 0}
+            for attack_type in app_state['testing_attack_types']:
+                app_state['testing_attack_types'][attack_type] = {'total': 0, 'blocked': 0}
+            app_state['auto_attack'] = False
+            app_state['simulation_running'] = False
         
-        # Reset defense system mode
-        defense_system.set_defense_mode(False)
+        if app_state['training_mode']:
+            # Reset only training data
+            app_state['training_attacks'] = 0
+            app_state['training_data_generated'] = {'normal': 0, 'attack': 0}
+            app_state['training_metrics'] = {'accuracy': [], 'loss': [], 'epochs': 0}
+            app_state['continuous_training'] = False
+            app_state['training_in_progress'] = False
+        
+        # Only reset modes if neither is active
+        if not app_state['training_mode'] and not app_state['testing_mode']:
+            app_state['defense_active'] = False
+            defense_system.set_system_mode('idle')
         
         return jsonify({
             'success': True,
-            'message': 'Complete system reset performed'
+            'message': 'System reset performed (mode-specific data cleared)'
         })
     
     # ==================== TRAINING MODE ENDPOINTS ====================
@@ -104,6 +125,8 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         def training_thread():
             app_state['training_in_progress'] = True
             app_state['training_mode'] = True
+            defense_system.set_system_mode('training')  # Set defense system to training mode
+            
             try:
                 print("Starting comprehensive AI training process...")
                 training_data = []
@@ -115,14 +138,18 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                     training_data.append(normal_traffic)
                     app_state['training_data_generated']['normal'] += 1
                 
-                # Generate various attack patterns
-                attack_types = ['DDoS', 'Port Scan', 'Brute Force']
+                # Generate various attack patterns for TRAINING only
+                all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+                attacks_per_type = 200 // len(all_attack_types)
+                
                 print("Generating attack patterns...")
-                for attack_type in attack_types:
-                    for _ in range(200):
+                for attack_type in all_attack_types:
+                    print(f"  Generating {attacks_per_type} {attack_type} attacks...")
+                    for _ in range(attacks_per_type):
                         attack_data = attack_simulator.launch_attack(attack_type)['data']
                         training_data.append(attack_data)
                         app_state['training_data_generated']['attack'] += 1
+                        app_state['training_attacks'] += 1  # Count for training only
                 
                 # Train anomaly detector
                 print("Training anomaly detection model...")
@@ -163,8 +190,10 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         app_state['training_in_progress'] = enabled
         
         if enabled:
+            defense_system.set_system_mode('training')
             start_continuous_training()
         else:
+            defense_system.set_system_mode('idle')
             stop_continuous_training()
         
         return jsonify({
@@ -195,21 +224,28 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                         })
                         app_state['training_data_generated']['normal'] += 1
                     
-                    # Generate attack data
-                    attack_types = ['DDoS', 'Port Scan', 'Brute Force']
-                    for attack_type in attack_types:
-                        for _ in range(batch_size // len(attack_types)):
+                    # Generate attack data for TRAINING
+                    all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+                    attacks_per_batch = batch_size // len(all_attack_types)
+                    
+                    for attack_type in all_attack_types:
+                        for _ in range(max(1, attacks_per_batch)):
                             attack_data = attack_simulator.launch_attack(attack_type)['data']
-                            label = 2 if attack_type == 'DDoS' else 1  # Malicious or Suspicious
+                            # Assign labels based on attack severity
+                            if attack_type in ['DDoS', 'SQL Injection', 'Malware', 'Man-in-Middle']:
+                                label = 2  # Malicious
+                            else:
+                                label = 1  # Suspicious
                             defense_system.training_data.append({
                                 'features': attack_data,
                                 'label': label
                             })
                             app_state['training_data_generated']['attack'] += 1
+                            app_state['training_attacks'] += 1  # Count only for training
                     
-                    # Simulate training metrics (realistic curves)
+                    # Simulate realistic training metrics
                     base_accuracy = min(95, 20 + epoch * 0.4)
-                    accuracy = base_accuracy + (5 * (1 - 1/(1 + epoch/10))) # Sigmoid-like growth
+                    accuracy = base_accuracy + (5 * (1 - 1/(1 + epoch/10)))
                     accuracy = min(95, max(20, accuracy + (random.uniform(-2, 2))))
                     
                     base_loss = max(0.01, 2 - epoch * 0.01)
@@ -254,7 +290,15 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         data_type = request.args.get('type', 'mixed')
         count = 0
         
+        if app_state['testing_mode']:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot generate training data while in testing mode'
+            })
+        
         try:
+            defense_system.set_system_mode('training')  # Ensure training mode
+            
             if data_type == 'normal':
                 for _ in range(100):
                     normal_traffic = attack_simulator.generate_normal_traffic()
@@ -266,16 +310,31 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                 app_state['training_data_generated']['normal'] += count
                 
             elif data_type == 'attack':
-                attack_types = ['DDoS', 'Port Scan', 'Brute Force']
-                for attack_type in attack_types:
-                    for _ in range(30):
+                # Generate all types of attacks for training
+                all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+                attacks_per_type = 30 // len(all_attack_types) + 1
+                
+                for attack_type in all_attack_types:
+                    for _ in range(attacks_per_type):
                         attack_data = attack_simulator.launch_attack(attack_type)['data']
-                        label = 2 if attack_type == 'DDoS' else 1
+                        # Assign appropriate labels based on attack severity
+                        if attack_type in ['DDoS', 'SQL Injection', 'Malware', 'Man-in-Middle']:
+                            label = 2  # Malicious
+                        else:
+                            label = 1  # Suspicious
                         defense_system.training_data.append({
                             'features': attack_data,
                             'label': label
                         })
                         count += 1
+                        app_state['training_attacks'] += 1  # Count only for training
+                        
+                        # Don't exceed 90 samples total
+                        if count >= 90:
+                            break
+                    if count >= 90:
+                        break
+                        
                 app_state['training_data_generated']['attack'] += count
                 
             elif data_type == 'mixed':
@@ -288,16 +347,29 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                     })
                 app_state['training_data_generated']['normal'] += 70
                 
-                attack_types = ['DDoS', 'Port Scan', 'Brute Force']
-                for attack_type in attack_types:
-                    for _ in range(10):
+                # Generate attacks from all types
+                all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+                attacks_per_type = 30 // len(all_attack_types) + 1
+                
+                for attack_type in all_attack_types:
+                    attacks_to_generate = min(attacks_per_type, 30 - (count - 70))
+                    if attacks_to_generate <= 0:
+                        break
+                        
+                    for _ in range(attacks_to_generate):
                         attack_data = attack_simulator.launch_attack(attack_type)['data']
-                        label = 2 if attack_type == 'DDoS' else 1
+                        if attack_type in ['DDoS', 'SQL Injection', 'Malware', 'Man-in-Middle']:
+                            label = 2  # Malicious
+                        else:
+                            label = 1  # Suspicious
                         defense_system.training_data.append({
                             'features': attack_data,
                             'label': label
                         })
-                app_state['training_data_generated']['attack'] += 30
+                        app_state['training_attacks'] += 1  # Count only for training
+                        count += 1
+                        
+                app_state['training_data_generated']['attack'] += (count - 70)
                 count = 100
             
             return jsonify({
@@ -314,6 +386,7 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     
     @app.route('/api/training_stats')
     def get_training_stats():
+        # Return ONLY training-specific statistics
         defense_stats = defense_system.get_defense_stats()
         
         # Calculate current accuracy and epochs from training metrics
@@ -327,6 +400,7 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             'total_samples': len(defense_system.training_data),
             'normal_samples': app_state['training_data_generated']['normal'],
             'attack_samples': app_state['training_data_generated']['attack'],
+            'total_attacks': app_state['training_attacks'],  # Training attacks only
             'model_trained': defense_stats.get('model_trained', False),
             'accuracy': round(current_accuracy, 1),
             'epochs': current_epochs,
@@ -353,22 +427,28 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                 print("Training models before saving...")
                 defense_system.train_defense_model()
             
+            # Create models directory
+            os.makedirs('models', exist_ok=True)
+            
             # Save anomaly detector if it has a model
             anomaly_saved = False
             try:
                 if hasattr(anomaly_detector, 'model') and anomaly_detector.model is not None:
                     anomaly_detector.save_model('models/anomaly_detector.pth')
                     anomaly_saved = True
+                    print("Anomaly detector model saved to models/anomaly_detector.pth")
             except Exception as e:
                 print(f"Could not save anomaly detector: {e}")
             
             # Save defense system
             defense_saved = defense_system.save_model('models/defense_system.pth')
+            if defense_saved:
+                print("Defense system model saved to models/defense_system.pth")
             
             if defense_saved:
                 return jsonify({
                     'success': True,
-                    'message': f'Defense model saved successfully. Anomaly detector: {"saved" if anomaly_saved else "not available"}'
+                    'message': f'Models saved to ./models/ directory. Defense: ✓, Anomaly: {"✓" if anomaly_saved else "✗"}'
                 })
             else:
                 return jsonify({
@@ -389,10 +469,14 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             anomaly_loaded = False
             try:
                 anomaly_loaded = anomaly_detector.load_model('models/anomaly_detector.pth')
+                if anomaly_loaded:
+                    print("Anomaly detector model loaded from models/anomaly_detector.pth")
             except Exception as e:
                 print(f"Could not load anomaly detector: {e}")
             
             defense_loaded = defense_system.load_model('models/defense_system.pth')
+            if defense_loaded:
+                print("Defense system model loaded from models/defense_system.pth")
             
             return jsonify({
                 'success': True,
@@ -423,9 +507,16 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         app_state['defense_active'] = enabled
         
         # Configure defense system for testing
-        defense_system.set_defense_mode(enabled)
-        
-        if not enabled:
+        if enabled:
+            defense_system.set_system_mode('testing')
+            # Reset testing counters when starting testing mode
+            app_state['testing_attacks'] = 0
+            app_state['testing_blocked'] = 0
+            app_state['testing_results'] = {'total_tests': 0, 'successful_detections': 0}
+            for attack_type in app_state['testing_attack_types']:
+                app_state['testing_attack_types'][attack_type] = {'total': 0, 'blocked': 0}
+        else:
+            defense_system.set_system_mode('idle')
             app_state['auto_attack'] = False
             app_state['simulation_running'] = False
         
@@ -444,15 +535,28 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             })
         
         attack_type = request.args.get('type', None)
+        
+        # If no specific type requested, choose randomly from all available types
+        if attack_type is None:
+            all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+            attack_type = random.choice(all_attack_types)
+        
         attack_info = attack_simulator.launch_attack(attack_type)
         
-        # Test defense system
+        # Count attack for TESTING statistics only
+        app_state['testing_attacks'] += 1
+        actual_attack_type = attack_info['type']
+        app_state['testing_attack_types'][actual_attack_type]['total'] += 1
+        
+        # Test defense system (should be in testing mode)
         defense_result = defense_system.defend_against_attack(attack_info['data'])
         
-        # Update test results
-        app_state['test_results']['total_tests'] += 1
+        # Update TESTING results only
+        app_state['testing_results']['total_tests'] += 1
         if defense_result['blocked'] or defense_result['threat_level'] != 'Normal':
-            app_state['test_results']['successful_detections'] += 1
+            app_state['testing_results']['successful_detections'] += 1
+            app_state['testing_blocked'] += 1
+            app_state['testing_attack_types'][actual_attack_type]['blocked'] += 1
         
         return jsonify({
             'success': True,
@@ -495,13 +599,20 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                     # Launch random attack
                     attack_info = attack_simulator.launch_attack()
                     
+                    # Count for TESTING only
+                    app_state['testing_attacks'] += 1
+                    actual_attack_type = attack_info['type']
+                    app_state['testing_attack_types'][actual_attack_type]['total'] += 1
+                    
                     # Test defense
                     defense_result = defense_system.defend_against_attack(attack_info['data'])
                     
-                    # Update test results
-                    app_state['test_results']['total_tests'] += 1
+                    # Update TESTING results only
+                    app_state['testing_results']['total_tests'] += 1
                     if defense_result['blocked'] or defense_result['threat_level'] != 'Normal':
-                        app_state['test_results']['successful_detections'] += 1
+                        app_state['testing_results']['successful_detections'] += 1
+                        app_state['testing_blocked'] += 1
+                        app_state['testing_attack_types'][actual_attack_type]['blocked'] += 1
                     
                     print(f"Auto-attack: {attack_info['type']} -> {defense_result['action']}")
                     
@@ -519,7 +630,13 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     
     @app.route('/api/reset_test_results')
     def reset_test_results():
-        app_state['test_results'] = {'total_tests': 0, 'successful_detections': 0}
+        # Reset ONLY testing statistics
+        app_state['testing_attacks'] = 0
+        app_state['testing_blocked'] = 0
+        app_state['testing_results'] = {'total_tests': 0, 'successful_detections': 0}
+        for attack_type in app_state['testing_attack_types']:
+            app_state['testing_attack_types'][attack_type] = {'total': 0, 'blocked': 0}
+        
         defense_system.reset_blocks()
         
         return jsonify({
@@ -598,28 +715,93 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     def get_defense_stats():
         defense_stats = defense_system.get_defense_stats()
         
-        # Add testing-specific stats
+        # Add mode-specific stats
         if app_state['testing_mode']:
-            total_tests = app_state['test_results']['total_tests']
-            successful = app_state['test_results']['successful_detections']
+            # Return TESTING statistics only
+            total_tests = app_state['testing_results']['total_tests']
+            successful = app_state['testing_results']['successful_detections']
             defense_stats['test_results'] = {
                 'total_tests': total_tests,
                 'successful_detections': successful,
                 'detection_rate': (successful / total_tests * 100) if total_tests > 0 else 0
             }
+            defense_stats['testing_attacks'] = app_state['testing_attacks']
+            defense_stats['testing_blocked'] = app_state['testing_blocked']
+            defense_stats['attack_type_stats'] = app_state['testing_attack_types']
+        elif app_state['training_mode']:
+            # Return TRAINING statistics only
+            defense_stats['training_attacks'] = app_state['training_attacks']
         
         return jsonify(defense_stats)
     
     @app.route('/api/attack_stats')
     def get_attack_stats():
-        return jsonify(attack_simulator.get_attack_stats())
+        base_stats = attack_simulator.get_attack_stats()
+        
+        # Add mode-specific attack counts
+        if app_state['testing_mode']:
+            # Override with testing-specific data
+            base_stats['total_attacks'] = app_state['testing_attacks']
+            base_stats['attack_types'] = {}
+            for attack_type, data in app_state['testing_attack_types'].items():
+                if data['total'] > 0:
+                    base_stats['attack_types'][attack_type] = data['total']
+        elif app_state['training_mode']:
+            # Override with training-specific data
+            base_stats['total_attacks'] = app_state['training_attacks']
+        
+        return jsonify(base_stats)
+    
+    @app.route('/api/testing_chart_data')
+    def get_testing_chart_data():
+        """Endpoint specifically for testing chart data"""
+        if not app_state['testing_mode']:
+            return jsonify({
+                'success': False,
+                'message': 'Testing mode not active'
+            })
+        
+        # All possible attack types
+        all_attack_types = ['DDoS', 'Port Scan', 'Brute Force', 'SQL Injection', 'XSS', 'Malware', 'Phishing', 'Man-in-Middle']
+        
+        # Prepare data for testing chart
+        chart_data = {
+            'categories': [],
+            'detected': [],
+            'missed': []
+        }
+        
+        # Always show all attack types, even if not tested yet
+        for attack_type in all_attack_types:
+            chart_data['categories'].append(attack_type)
+            
+            if attack_type in app_state['testing_attack_types']:
+                data = app_state['testing_attack_types'][attack_type]
+                if data['total'] > 0:
+                    detected_percent = (data['blocked'] / data['total']) * 100
+                    missed_percent = 100 - detected_percent
+                else:
+                    detected_percent = 0
+                    missed_percent = 0
+            else:
+                detected_percent = 0
+                missed_percent = 0
+            
+            chart_data['detected'].append(round(detected_percent, 1))
+            chart_data['missed'].append(round(missed_percent, 1))
+        
+        return jsonify({
+            'success': True,
+            'data': chart_data
+        })
     
     @app.route('/api/ai_training_status')
     def get_ai_training_status():
         return jsonify({
             'training_in_progress': app_state['training_in_progress'],
             'training_mode': app_state['training_mode'],
-            'continuous_training': app_state['continuous_training']
+            'continuous_training': app_state['continuous_training'],
+            'testing_mode': app_state['testing_mode']
         })
     
     # Legacy endpoints for backward compatibility
