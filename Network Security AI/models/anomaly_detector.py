@@ -42,6 +42,7 @@ class AnomalyDetector:
             'packet_size', 'duration', 'protocol', 'src_port', 'dst_port',
             'packet_count', 'byte_count', 'flow_rate', 'packet_interval'
         ]
+        self.is_trained = False
         
     def preprocess_data(self, data):
         if isinstance(data, dict):
@@ -54,12 +55,33 @@ class AnomalyDetector:
                 df[feature] = 0
                 
         df = df[self.feature_names].fillna(0)
+        
+        # If scaler isn't fitted yet, fit it
+        if not hasattr(self.scaler, 'mean_'):
+            self.scaler.fit(df)
+            
         return self.scaler.transform(df)
     
     def train(self, training_data):
         print("Training anomaly detection model...")
         
-        X = self.preprocess_data(training_data)
+        # Convert training data to DataFrame if needed
+        if isinstance(training_data, list) and len(training_data) > 0:
+            if isinstance(training_data[0], dict):
+                training_df = pd.DataFrame(training_data)
+            else:
+                training_df = training_data
+        else:
+            training_df = training_data
+        
+        # Ensure we have all required features
+        for feature in self.feature_names:
+            if feature not in training_df.columns:
+                training_df[feature] = 0
+        
+        # Preprocess data
+        self.scaler.fit(training_df[self.feature_names].fillna(0))
+        X = self.scaler.transform(training_df[self.feature_names].fillna(0))
         X_tensor = torch.FloatTensor(X).to(self.device)
         
         input_dim = X.shape[1]
@@ -77,18 +99,21 @@ class AnomalyDetector:
             optimizer.step()
             
             if epoch % 20 == 0:
-                print(f'Epoch {epoch}, Loss: {loss.item():.4f}')
+                print(f'Anomaly Detection Epoch {epoch}, Loss: {loss.item():.4f}')
         
+        # Calculate threshold
         self.model.eval()
         with torch.no_grad():
             reconstructed = self.model(X_tensor)
             mse = torch.mean((X_tensor - reconstructed) ** 2, dim=1)
             self.threshold = torch.quantile(mse, 0.95).item()
         
-        print(f"Training complete. Threshold: {self.threshold:.4f}")
+        self.is_trained = True
+        print(f"Anomaly detection training complete. Threshold: {self.threshold:.4f}")
+        return True
     
     def detect_anomaly(self, network_data):
-        if self.model is None:
+        if self.model is None or not self.is_trained:
             return False, 0.0
             
         X = self.preprocess_data(network_data)
@@ -106,20 +131,38 @@ class AnomalyDetector:
         return is_anomaly, confidence
     
     def save_model(self, path='models/anomaly_detector.pth'):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'threshold': self.threshold,
-            'scaler': self.scaler
-        }, path)
+        if self.model is None or not self.is_trained:
+            print("No trained model to save")
+            return False
+            
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'threshold': self.threshold,
+                'scaler': self.scaler,
+                'is_trained': self.is_trained,
+                'feature_names': self.feature_names
+            }, path)
+            print(f"Anomaly detector model saved to {path}")
+            return True
+        except Exception as e:
+            print(f"Error saving anomaly detector: {e}")
+            return False
         
     def load_model(self, path='models/anomaly_detector.pth'):
         if os.path.exists(path):
-            checkpoint = torch.load(path, map_location=self.device)
-            input_dim = len(self.feature_names)
-            self.model = AutoEncoder(input_dim).to(self.device)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.threshold = checkpoint['threshold']
-            self.scaler = checkpoint['scaler']
-            return True
+            try:
+                checkpoint = torch.load(path, map_location=self.device)
+                input_dim = len(self.feature_names)
+                self.model = AutoEncoder(input_dim).to(self.device)
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.threshold = checkpoint['threshold']
+                self.scaler = checkpoint['scaler']
+                self.is_trained = checkpoint.get('is_trained', True)
+                print(f"Anomaly detector model loaded from {path}")
+                return True
+            except Exception as e:
+                print(f"Error loading anomaly detector: {e}")
+                return False
         return False

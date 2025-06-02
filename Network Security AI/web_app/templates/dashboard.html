@@ -323,6 +323,35 @@
             border: 2px solid rgba(231, 76, 60, 0.3);
             background: rgba(231, 76, 60, 0.1);
         }
+
+        .blocked-ip-item {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 8px 0;
+        }
+
+        .blocked-ip-header {
+            font-weight: bold;
+            color: #ff6b6b;
+            margin-bottom: 5px;
+        }
+
+        .blocked-ip-reason {
+            font-size: 0.9em;
+            margin-bottom: 3px;
+        }
+
+        .blocked-ip-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+        }
+
+        .blocked-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 
@@ -520,19 +549,21 @@
             </div>
 
             <div class="panel">
-                <h3>📡 Network Traffic</h3>
+                <h3>🚫 Blocked IPs</h3>
                 <div class="stats-grid">
                     <div class="stat-item">
-                        <div class="stat-value" id="totalPackets">0</div>
-                        <div class="stat-label">Total Packets</div>
+                        <div class="stat-value" id="totalBlockedIPs">0</div>
+                        <div class="stat-label">Total Blocked</div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-value" id="anomalies">0</div>
-                        <div class="stat-label">Anomalies</div>
+                        <div class="stat-value" id="recentBlocks">0</div>
+                        <div class="stat-label">Recent Blocks</div>
                     </div>
                 </div>
 
-                <div class="chart-container" id="trafficChart"></div>
+                <div class="blocked-list" id="blockedIPsList">
+                    <div class="log-entry log-normal">No blocked IPs...</div>
+                </div>
             </div>
 
             <div class="panel">
@@ -543,8 +574,18 @@
             </div>
 
             <div class="panel">
-                <h3>📊 Real-time Statistics</h3>
-                <div class="chart-container" id="realtimeChart"></div>
+                <h3>📊 Network Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalPackets">0</div>
+                        <div class="stat-label">Total Packets</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="anomalies">0</div>
+                        <div class="stat-label">Anomalies</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="systemStatsChart"></div>
             </div>
         </div>
     </div>
@@ -583,6 +624,9 @@
                 updateTestingChart();
             } else if (tabName === 'training') {
                 updateTrainingStats();
+            } else if (tabName === 'monitoring') {
+                updateMonitoringStats();
+                updateBlockedIPs();
             }
         }
 
@@ -897,6 +941,53 @@
 
                     // Update all stats
                     updateStats();
+                    updateBlockedIPs();
+                });
+        }
+
+        function updateBlockedIPs() {
+            fetch('/api/blocked_ips')
+                .then(response => response.json())
+                .then(data => {
+                    const blockedList = document.getElementById('blockedIPsList');
+                    const totalBlocked = document.getElementById('totalBlockedIPs');
+                    const recentBlocks = document.getElementById('recentBlocks');
+
+                    totalBlocked.textContent = data.total_blocked;
+
+                    // Show recent blocks (last 5)
+                    const recentCount = Math.min(5, data.blocked_ips.length);
+                    recentBlocks.textContent = recentCount;
+
+                    if (data.blocked_ips.length === 0) {
+                        blockedList.innerHTML = '<div class="log-entry log-normal">No blocked IPs...</div>';
+                    } else {
+                        blockedList.innerHTML = '';
+
+                        // Sort by timestamp (most recent first)
+                        const sortedIPs = data.blocked_ips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                        sortedIPs.forEach(blockedIP => {
+                            const ipDiv = document.createElement('div');
+                            ipDiv.className = 'blocked-ip-item';
+
+                            const time = new Date(blockedIP.timestamp).toLocaleString();
+
+                            ipDiv.innerHTML = `
+                                <div class="blocked-ip-header">🚫 ${blockedIP.ip}</div>
+                                <div class="blocked-ip-reason">${blockedIP.reason}</div>
+                                <div class="blocked-ip-time">Blocked: ${time}</div>
+                                <div class="blocked-ip-time">Threat Level: ${blockedIP.threat_level} (${(blockedIP.confidence * 100).toFixed(1)}%)</div>
+                            `;
+
+                            blockedList.appendChild(ipDiv);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.log('Blocked IPs update failed:', error);
+                    document.getElementById('totalBlockedIPs').textContent = '0';
+                    document.getElementById('recentBlocks').textContent = '0';
                 });
         }
 
@@ -941,6 +1032,7 @@
                 updateTestingStats();
             } else if (currentTab === 'monitoring') {
                 updateMonitoringStats();
+                updateBlockedIPs();
             }
         }
 
@@ -997,7 +1089,6 @@
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('totalPackets').textContent = data.stats.total_packets || 0;
-                    updateTrafficChart(data.recent_traffic);
                 })
                 .catch(error => console.log('Network stats failed:', error));
 
@@ -1011,34 +1102,6 @@
                     document.getElementById('anomalies').textContent = anomalyCount;
                 })
                 .catch(error => console.log('Anomaly detection failed:', error));
-        }
-
-        function updateTrafficChart(trafficData) {
-            if (!trafficData || trafficData.length === 0) return;
-
-            const timestamps = trafficData.map(d => new Date(d.timestamp * 1000));
-            const packetSizes = trafficData.map(d => d.packet_size);
-
-            const trace = {
-                x: timestamps,
-                y: packetSizes,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: 'Packet Size',
-                line: { color: '#74b9ff' }
-            };
-
-            const layout = {
-                title: 'Real-time Traffic',
-                paper_bgcolor: 'rgba(0,0,0,0)',
-                plot_bgcolor: 'rgba(0,0,0,0.2)',
-                font: { color: 'white' },
-                xaxis: { color: 'white' },
-                yaxis: { color: 'white' },
-                margin: { t: 50, b: 50, l: 50, r: 20 }
-            };
-
-            Plotly.newPlot('trafficChart', [trace], layout, { responsive: true });
         }
 
         function updateTrainingChart() {
@@ -1280,38 +1343,40 @@
                 });
         }
 
-        function updateRealtimeChart() {
+        function updateSystemStatsChart() {
+            // Create a simple chart showing system stats over time
             const timeNow = new Date();
             const times = [];
-            const cpuUsage = [];
-            const memoryUsage = [];
+            const packets = [];
+            const blocks = [];
 
             for (let i = 19; i >= 0; i--) {
-                times.push(new Date(timeNow.getTime() - i * 3000));
-                cpuUsage.push(Math.random() * 50 + 20);
-                memoryUsage.push(Math.random() * 30 + 40);
+                times.push(new Date(timeNow.getTime() - i * 10000)); // 10 second intervals
+                packets.push(Math.random() * 100 + 50);
+                blocks.push(Math.random() * 10);
             }
 
             const trace1 = {
                 x: times,
-                y: cpuUsage,
+                y: packets,
                 type: 'scatter',
                 mode: 'lines+markers',
-                name: 'CPU Usage (%)',
+                name: 'Packets/sec',
                 line: { color: '#74b9ff' }
             };
 
             const trace2 = {
                 x: times,
-                y: memoryUsage,
+                y: blocks,
                 type: 'scatter',
                 mode: 'lines+markers',
-                name: 'Memory Usage (%)',
-                line: { color: '#fdcb6e' }
+                name: 'Blocked IPs',
+                yaxis: 'y2',
+                line: { color: '#ff6b6b' }
             };
 
             const layout = {
-                title: 'System Resources',
+                title: 'Network Activity',
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0.2)',
                 font: { color: 'white' },
@@ -1321,15 +1386,40 @@
                 },
                 yaxis: {
                     color: 'white',
-                    range: [0, 100]
+                    title: 'Packets/sec'
+                },
+                yaxis2: {
+                    title: 'Blocked IPs',
+                    titlefont: { color: '#ff6b6b' },
+                    tickfont: { color: '#ff6b6b' },
+                    overlaying: 'y',
+                    side: 'right'
                 },
                 legend: {
                     font: { color: 'white' }
                 },
-                margin: { t: 50, b: 50, l: 50, r: 20 }
+                margin: { t: 50, b: 50, l: 50, r: 50 }
             };
 
-            Plotly.newPlot('realtimeChart', [trace1, trace2], layout, { responsive: true });
+            Plotly.newPlot('systemStatsChart', [trace1, trace2], layout, { responsive: true });
+        }
+
+        function updateAiTrainingStatus() {
+            return jsonify({
+                'training_in_progress': app_state['training_in_progress'],
+                'training_mode': app_state['training_mode'],
+                'continuous_training': app_state['continuous_training'],
+                'testing_mode': app_state['testing_mode']
+            });
+        }
+
+        // Legacy endpoints for backward compatibility
+        function toggleDefense() {
+            data = request.get_json();
+            enabled = data.get('enabled', True);
+
+            // This now maps to testing mode
+            return enableTestingMode();
         }
 
         // Initialize dashboard
@@ -1340,7 +1430,7 @@
 
             updateTrainingChart();
             updateTestingChart();
-            updateRealtimeChart();
+            updateSystemStatsChart();
 
             // Set up periodic updates
             updateInterval = setInterval(() => {
@@ -1355,7 +1445,8 @@
                     }
                 } else if (currentTab === 'monitoring') {
                     updateMonitoringStats();
-                    updateRealtimeChart();
+                    updateBlockedIPs();
+                    updateSystemStatsChart();
                 }
             }, 3000);
         });
