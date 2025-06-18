@@ -17,7 +17,7 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     from src.network_monitor import NetworkMonitor
     network_monitor = NetworkMonitor()
     
-    # Global state with COMPLETELY separated modes
+    # Global state with COMPLETELY separated modes BUT shared blocked IPs
     app_state = {
         # System states - NEVER mix training and testing
         'simulation_running': False,
@@ -49,9 +49,29 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             'Man-in-Middle': {'total': 0, 'blocked': 0}
         },
         
+        # SHARED monitoring data - will sync with defense_system
+        'monitoring_packets': 0,
+        'monitoring_anomalies': 0,
+        
         # General
         'defense_active': False
     }
+    
+    # Helper function to sync blocked IPs between testing and monitoring
+    def sync_blocked_ips_to_monitoring():
+        """Sync defense system blocked IPs to app state for consistent display"""
+        blocked_ips = defense_system.get_blocked_ips()
+        # Update monitoring display counters based on actual blocked IPs
+        return len(blocked_ips)
+    
+    def sync_testing_to_monitoring():
+        """Keep testing and monitoring data synchronized"""
+        if app_state['testing_mode']:
+            # The defense_system.blocked_ips contains the actual blocked IPs
+            # Both testing and monitoring should show the same data
+            total_blocked = len(defense_system.blocked_ips)
+            return total_blocked
+        return 0
     
     @app.route('/')
     def dashboard():
@@ -96,6 +116,10 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
             app_state['training_metrics'] = {'accuracy': [], 'loss': [], 'epochs': 0}
             app_state['continuous_training'] = False
             app_state['training_in_progress'] = False
+        
+        # Reset monitoring data (always reset these)
+        app_state['monitoring_packets'] = 0
+        app_state['monitoring_anomalies'] = 0
         
         # Only reset modes if neither is active
         if not app_state['training_mode'] and not app_state['testing_mode']:
@@ -683,6 +707,8 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         for attack_type in app_state['testing_attack_types']:
             app_state['testing_attack_types'][attack_type] = {'total': 0, 'blocked': 0}
         
+        # IMPORTANT: Reset the actual blocked IPs in defense system
+        # This will sync both testing and monitoring displays
         defense_system.reset_blocks()
         
         return jsonify({
@@ -716,17 +742,23 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     def get_network_stats():
         stats = network_monitor.get_network_stats()
         
+        # SYNC: Always return the same blocked IPs as testing mode
+        blocked_ips_data = defense_system.get_blocked_ips()
+        
         return jsonify({
             'stats': stats,
-            'blocked_ips': defense_system.get_blocked_ips()
+            'blocked_ips': blocked_ips_data,
+            'total_blocked': len(blocked_ips_data)  # This will match testing display
         })
     
     @app.route('/api/blocked_ips')
     def get_blocked_ips():
-        """Get detailed information about blocked IPs"""
+        """Get detailed information about blocked IPs - SHARED between testing and monitoring"""
+        blocked_ips_data = defense_system.get_blocked_ips()
+        
         return jsonify({
-            'blocked_ips': defense_system.get_blocked_ips(),
-            'total_blocked': len(defense_system.blocked_ips)
+            'blocked_ips': blocked_ips_data,
+            'total_blocked': len(blocked_ips_data)
         })
     
     @app.route('/api/detect_anomaly')
@@ -756,10 +788,15 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         
         is_anomaly, confidence = anomaly_detector.detect_anomaly(network_data)
         
+        # Update monitoring anomalies counter
+        if is_anomaly:
+            app_state['monitoring_anomalies'] += 1
+        
         return jsonify({
             'anomaly_detected': is_anomaly,
             'confidence': confidence,
-            'traffic_data': traffic_data
+            'traffic_data': traffic_data,
+            'total_anomalies': app_state['monitoring_anomalies']
         })
     
     # ==================== SHARED ENDPOINTS ====================
@@ -768,9 +805,12 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
     def get_defense_stats():
         defense_stats = defense_system.get_defense_stats()
         
+        # SYNC: Always use the actual blocked IPs count from defense system
+        actual_blocked_count = len(defense_system.blocked_ips)
+        
         # Add mode-specific stats
         if app_state['testing_mode']:
-            # Return TESTING statistics only
+            # Return TESTING statistics only but sync blocked count
             total_tests = app_state['testing_results']['total_tests']
             successful = app_state['testing_results']['successful_detections']
             defense_stats['test_results'] = {
@@ -779,11 +819,16 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
                 'detection_rate': (successful / total_tests * 100) if total_tests > 0 else 0
             }
             defense_stats['testing_attacks'] = app_state['testing_attacks']
-            defense_stats['testing_blocked'] = app_state['testing_blocked']
+            defense_stats['testing_blocked'] = actual_blocked_count  # Use actual count
             defense_stats['attack_type_stats'] = app_state['testing_attack_types']
+            
         elif app_state['training_mode']:
             # Return TRAINING statistics only
             defense_stats['training_attacks'] = app_state['training_attacks']
+        
+        # Always include the actual blocked IPs count for consistency
+        defense_stats['total_blocked_ips'] = actual_blocked_count
+        defense_stats['blocked_ips_list'] = defense_system.get_blocked_ips()
         
         return jsonify(defense_stats)
     
@@ -846,6 +891,44 @@ def create_app(anomaly_detector, attack_simulator, defense_system):
         return jsonify({
             'success': True,
             'data': chart_data
+        })
+    
+    @app.route('/api/monitoring_stats')
+    def get_monitoring_stats():
+        """Endpoint specifically for monitoring statistics - SYNCED with testing"""
+        
+        # Get network stats
+        network_stats = network_monitor.get_network_stats()
+        
+        # SYNC: Get actual blocked IPs from defense system (same as testing)
+        blocked_ips_data = defense_system.get_blocked_ips()
+        total_blocked = len(blocked_ips_data)
+        
+        # Calculate recent blocks (last 5 minutes)
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        recent_threshold = now - timedelta(minutes=5)
+        recent_blocks = 0
+        
+        for blocked_ip in blocked_ips_data:
+            try:
+                block_time = datetime.fromisoformat(blocked_ip['timestamp'].replace('Z', '+00:00'))
+                if block_time.replace(tzinfo=None) > recent_threshold:
+                    recent_blocks += 1
+            except:
+                pass
+        
+        return jsonify({
+            'total_packets': network_stats.get('total_packets', 0),
+            'total_blocked_ips': total_blocked,  # SYNCED with testing
+            'recent_blocks': recent_blocks,
+            'total_anomalies': app_state['monitoring_anomalies'],
+            'monitoring_active': network_stats.get('monitoring', False),
+            'interface': network_stats.get('interface', 'unknown'),
+            'blocked_ips_list': blocked_ips_data,  # Same data as testing
+            'protocol_distribution': network_stats.get('protocol_distribution', {}),
+            'top_ports': network_stats.get('top_ports', {}),
+            'top_ips': network_stats.get('top_ips', {})
         })
     
     @app.route('/api/ai_training_status')

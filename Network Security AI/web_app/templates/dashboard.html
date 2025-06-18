@@ -602,6 +602,13 @@
             loss: []
         };
 
+        // SHARED DATA - synchronized between testing and monitoring
+        let sharedBlockedIPs = {
+            total: 0,
+            recent: 0,
+            list: []
+        };
+
         // Tab Management
         function switchTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(content => {
@@ -622,11 +629,87 @@
             if (tabName === 'testing') {
                 updateTestingStats();
                 updateTestingChart();
+                // Sync blocked IPs immediately when switching to testing
+                syncBlockedIPsDisplay();
             } else if (tabName === 'training') {
                 updateTrainingStats();
             } else if (tabName === 'monitoring') {
                 updateMonitoringStats();
                 updateBlockedIPs();
+                // Sync blocked IPs immediately when switching to monitoring
+                syncBlockedIPsDisplay();
+            }
+        }
+
+        // SYNC FUNCTION: Keep blocked IPs synchronized between testing and monitoring
+        function syncBlockedIPsDisplay() {
+            fetch('/api/blocked_ips')
+                .then(response => response.json())
+                .then(data => {
+                    // Update shared blocked IPs data
+                    sharedBlockedIPs.total = data.total_blocked;
+                    sharedBlockedIPs.list = data.blocked_ips;
+
+                    // Calculate recent blocks (last 5)
+                    sharedBlockedIPs.recent = Math.min(5, data.blocked_ips.length);
+
+                    // Update both testing and monitoring displays with same data
+                    updateBlockedIPsInTesting(data);
+                    updateBlockedIPsInMonitoring(data);
+                })
+                .catch(error => {
+                    console.log('Blocked IPs sync failed:', error);
+                });
+        }
+
+        function updateBlockedIPsInTesting(data) {
+            // Update testing tab if elements exist
+            const testingBlockedElement = document.getElementById('blockedAttacks');
+            if (testingBlockedElement && testingActive) {
+                // In testing mode, show actual blocked count from defense system
+                testingBlockedElement.textContent = data.total_blocked;
+            }
+        }
+
+        function updateBlockedIPsInMonitoring(data) {
+            // Update monitoring tab elements
+            const totalBlockedElement = document.getElementById('totalBlockedIPs');
+            const recentBlocksElement = document.getElementById('recentBlocks');
+            const blockedListElement = document.getElementById('blockedIPsList');
+
+            if (totalBlockedElement) {
+                totalBlockedElement.textContent = data.total_blocked;
+            }
+
+            if (recentBlocksElement) {
+                recentBlocksElement.textContent = sharedBlockedIPs.recent;
+            }
+
+            if (blockedListElement) {
+                if (data.blocked_ips.length === 0) {
+                    blockedListElement.innerHTML = '<div class="log-entry log-normal">No blocked IPs...</div>';
+                } else {
+                    blockedListElement.innerHTML = '';
+
+                    // Sort by timestamp (most recent first)
+                    const sortedIPs = data.blocked_ips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                    sortedIPs.forEach(blockedIP => {
+                        const ipDiv = document.createElement('div');
+                        ipDiv.className = 'blocked-ip-item';
+
+                        const time = new Date(blockedIP.timestamp).toLocaleString();
+
+                        ipDiv.innerHTML = `
+                            <div class="blocked-ip-header">🚫 ${blockedIP.ip}</div>
+                            <div class="blocked-ip-reason">${blockedIP.reason}</div>
+                            <div class="blocked-ip-time">Blocked: ${time}</div>
+                            <div class="blocked-ip-time">Threat Level: ${blockedIP.threat_level} (${(blockedIP.confidence * 100).toFixed(1)}%)</div>
+                        `;
+
+                        blockedListElement.appendChild(ipDiv);
+                    });
+                }
             }
         }
 
@@ -811,6 +894,8 @@
                     addLogEntry('defenseLog', 'Testing mode enabled - Defense systems online', 'normal');
                     // Reset testing statistics display
                     resetTestingDisplay();
+                    // Sync blocked IPs after enabling testing
+                    syncBlockedIPsDisplay();
                 });
         }
 
@@ -832,6 +917,8 @@
                 .then(response => response.json())
                 .then(data => {
                     addLogEntry('defenseLog', 'Testing mode disabled', 'warning');
+                    // Sync blocked IPs after disabling testing
+                    syncBlockedIPsDisplay();
                 });
         }
 
@@ -886,6 +973,8 @@
 
                     updateTestingStats();
                     updateTestingChart();
+                    // Sync blocked IPs after each attack to keep displays in sync
+                    syncBlockedIPsDisplay();
                 });
         }
 
@@ -897,6 +986,8 @@
                     resetTestingDisplay();
                     updateTestingStats();
                     updateTestingChart();
+                    // IMPORTANT: Sync blocked IPs after reset to update both testing and monitoring
+                    syncBlockedIPsDisplay();
                 });
         }
 
@@ -939,56 +1030,23 @@
                     testingActive = false;
                     updateModeIndicator();
 
+                    // Reset shared blocked IPs data
+                    sharedBlockedIPs = {
+                        total: 0,
+                        recent: 0,
+                        list: []
+                    };
+
                     // Update all stats
                     updateStats();
-                    updateBlockedIPs();
+                    syncBlockedIPsDisplay(); // Sync after system reset
                 });
         }
 
         function updateBlockedIPs() {
-            fetch('/api/blocked_ips')
-                .then(response => response.json())
-                .then(data => {
-                    const blockedList = document.getElementById('blockedIPsList');
-                    const totalBlocked = document.getElementById('totalBlockedIPs');
-                    const recentBlocks = document.getElementById('recentBlocks');
-
-                    totalBlocked.textContent = data.total_blocked;
-
-                    // Show recent blocks (last 5)
-                    const recentCount = Math.min(5, data.blocked_ips.length);
-                    recentBlocks.textContent = recentCount;
-
-                    if (data.blocked_ips.length === 0) {
-                        blockedList.innerHTML = '<div class="log-entry log-normal">No blocked IPs...</div>';
-                    } else {
-                        blockedList.innerHTML = '';
-
-                        // Sort by timestamp (most recent first)
-                        const sortedIPs = data.blocked_ips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-                        sortedIPs.forEach(blockedIP => {
-                            const ipDiv = document.createElement('div');
-                            ipDiv.className = 'blocked-ip-item';
-
-                            const time = new Date(blockedIP.timestamp).toLocaleString();
-
-                            ipDiv.innerHTML = `
-                                <div class="blocked-ip-header">🚫 ${blockedIP.ip}</div>
-                                <div class="blocked-ip-reason">${blockedIP.reason}</div>
-                                <div class="blocked-ip-time">Blocked: ${time}</div>
-                                <div class="blocked-ip-time">Threat Level: ${blockedIP.threat_level} (${(blockedIP.confidence * 100).toFixed(1)}%)</div>
-                            `;
-
-                            blockedList.appendChild(ipDiv);
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.log('Blocked IPs update failed:', error);
-                    document.getElementById('totalBlockedIPs').textContent = '0';
-                    document.getElementById('recentBlocks').textContent = '0';
-                });
+            // This function is called from monitoring tab
+            // But we use the shared sync function instead
+            syncBlockedIPsDisplay();
         }
 
         // Utility Functions
@@ -1030,9 +1088,11 @@
                 updateTrainingStats();
             } else if (currentTab === 'testing') {
                 updateTestingStats();
+                // Always sync blocked IPs when updating testing stats
+                syncBlockedIPsDisplay();
             } else if (currentTab === 'monitoring') {
                 updateMonitoringStats();
-                updateBlockedIPs();
+                // Monitoring stats include blocked IPs sync automatically
             }
         }
 
@@ -1065,12 +1125,12 @@
                 })
                 .catch(error => console.log('Attack stats failed:', error));
 
-            // Get defense statistics (testing-specific)
+            // Get defense statistics (testing-specific) including synced blocked count
             fetch('/api/defense_stats')
                 .then(response => response.json())
                 .then(data => {
-                    // Use testing-specific blocked attacks count
-                    const blockedAttacks = data.testing_blocked || 0;
+                    // Use actual blocked IPs count (synced with monitoring)
+                    const blockedAttacks = data.total_blocked_ips || 0;
                     document.getElementById('blockedAttacks').textContent = blockedAttacks;
 
                     // Calculate detection rate from testing data
@@ -1085,21 +1145,48 @@
         }
 
         function updateMonitoringStats() {
-            fetch('/api/network_stats')
+            // Use the new monitoring-specific endpoint that syncs with testing
+            fetch('/api/monitoring_stats')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('totalPackets').textContent = data.stats.total_packets || 0;
-                })
-                .catch(error => console.log('Network stats failed:', error));
+                    document.getElementById('totalPackets').textContent = data.total_packets || 0;
+                    document.getElementById('totalBlockedIPs').textContent = data.total_blocked_ips || 0;
+                    document.getElementById('recentBlocks').textContent = data.recent_blocks || 0;
 
+                    // Update anomalies counter
+                    if (data.total_anomalies !== undefined) {
+                        anomalyCount = data.total_anomalies;
+                        document.getElementById('anomalies').textContent = anomalyCount;
+                    }
+
+                    // Update blocked IPs list with synced data
+                    updateBlockedIPsInMonitoring({
+                        blocked_ips: data.blocked_ips_list || [],
+                        total_blocked: data.total_blocked_ips || 0
+                    });
+                })
+                .catch(error => {
+                    console.log('Monitoring stats failed:', error);
+                    // Fallback to old method
+                    fetch('/api/network_stats')
+                        .then(response => response.json())
+                        .then(data => {
+                            document.getElementById('totalPackets').textContent = data.stats.total_packets || 0;
+                        })
+                        .catch(error => console.log('Network stats failed:', error));
+                });
+
+            // Check for new anomalies
             fetch('/api/detect_anomaly')
                 .then(response => response.json())
                 .then(data => {
                     if (data.anomaly_detected) {
-                        anomalyCount++;
                         addLogEntry('systemLog', `Anomaly detected! Confidence: ${data.confidence.toFixed(2)}`, 'danger');
                     }
-                    document.getElementById('anomalies').textContent = anomalyCount;
+                    if (data.total_anomalies !== undefined) {
+                        anomalyCount = data.total_anomalies;
+                        document.getElementById('anomalies').textContent = anomalyCount;
+                    }
                 })
                 .catch(error => console.log('Anomaly detection failed:', error));
         }
@@ -1404,29 +1491,14 @@
             Plotly.newPlot('systemStatsChart', [trace1, trace2], layout, { responsive: true });
         }
 
-        function updateAiTrainingStatus() {
-            return jsonify({
-                'training_in_progress': app_state['training_in_progress'],
-                'training_mode': app_state['training_mode'],
-                'continuous_training': app_state['continuous_training'],
-                'testing_mode': app_state['testing_mode']
-            });
-        }
-
-        // Legacy endpoints for backward compatibility
-        function toggleDefense() {
-            data = request.get_json();
-            enabled = data.get('enabled', True);
-
-            // This now maps to testing mode
-            return enableTestingMode();
-        }
-
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function () {
             updateSystemStatus();
             updateStats();
             updateModeIndicator();
+
+            // Initial sync of blocked IPs
+            syncBlockedIPsDisplay();
 
             updateTrainingChart();
             updateTestingChart();
@@ -1442,11 +1514,17 @@
                     updateTestingStats();
                     if (testingActive) {
                         updateTestingChart(); // Update chart more frequently in testing mode
+                        syncBlockedIPsDisplay(); // Keep blocked IPs synced during testing
                     }
                 } else if (currentTab === 'monitoring') {
                     updateMonitoringStats();
-                    updateBlockedIPs();
                     updateSystemStatsChart();
+                    // Monitoring stats update includes blocked IPs sync automatically
+                }
+
+                // Always sync blocked IPs every update cycle to ensure consistency
+                if (testingActive || currentTab === 'monitoring') {
+                    syncBlockedIPsDisplay();
                 }
             }, 3000);
         });
