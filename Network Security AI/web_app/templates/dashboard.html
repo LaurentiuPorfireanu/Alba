@@ -766,11 +766,13 @@
         }
 
         function stopTraining() {
+            // ADAUGĂ ACESTE LINII:
+            console.log("=== ÎNAINTE DE STOP ===");
+            console.log("Accuracy afișată:", document.getElementById('modelAccuracy').textContent);
+            console.log("Epochs afișate:", document.getElementById('trainingEpochs').textContent);
+
             trainingActive = false;
             updateModeIndicator();
-
-            document.getElementById('trainingStatus').innerHTML = 'Status: <span style="color: #636e72;">Training Stopped</span>';
-            document.getElementById('trainingProgress').style.display = 'none';
 
             fetch('/api/continuous_training', {
                 method: 'POST',
@@ -779,49 +781,112 @@
             })
                 .then(response => response.json())
                 .then(data => {
+                    // ADAUGĂ ACESTE LINII:
+                    console.log("=== RĂSPUNS DE LA SERVER ===");
+                    console.log("Server response:", data);
+
                     addLogEntry('trainingLog', 'Training stopped', 'warning');
+
+                    // ADAUGĂ ACESTE LINII:
+                    setTimeout(() => {
+                        console.log("=== DUPĂ STOP ===");
+                        console.log("Accuracy după stop:", document.getElementById('modelAccuracy').textContent);
+                        console.log("Epochs după stop:", document.getElementById('trainingEpochs').textContent);
+                    }, 1000);
                 });
         }
 
-        function startTrainingProgressSimulation() {
-            let epoch = 0;
-            const maxEpochs = 500;
+        // function startTrainingProgressSimulation() {
+        //     let epoch = 0;
+        //     const maxEpochs = 500;
 
+        //     const progressInterval = setInterval(() => {
+        //         if (!trainingActive) {
+        //             clearInterval(progressInterval);
+        //             return;
+        //         }
+
+        //         epoch++;
+        //         const progress = (epoch / maxEpochs) * 100;
+        //         document.getElementById('trainingProgressFill').style.width = Math.min(progress, 100) + '%';
+
+        //         const baseAccuracy = Math.min(95, 20 + epoch * 0.15);
+        //         const accuracy = baseAccuracy + (5 * (1 - 1 / (1 + epoch / 20))) + (Math.random() * 2 - 1);
+        //         const finalAccuracy = Math.min(95, Math.max(20, accuracy));
+
+        //         const baseLoss = Math.max(0.01, 2 - epoch * 0.004);
+        //         const loss = baseLoss * (1 + (Math.random() * 0.1 - 0.05));
+
+        //         trainingData.epochs.push(epoch);
+        //         trainingData.accuracy.push(finalAccuracy);
+        //         trainingData.loss.push(loss);
+
+        //         document.getElementById('modelAccuracy').textContent = Math.round(finalAccuracy) + '%';
+        //         document.getElementById('trainingEpochs').textContent = epoch;
+
+        //         if (epoch % 5 === 0) {
+        //             updateTrainingChart();
+        //         }
+
+        //         if (trainingData.epochs.length > 100) {
+        //             trainingData.epochs = trainingData.epochs.slice(-100);
+        //             trainingData.accuracy = trainingData.accuracy.slice(-100);
+        //             trainingData.loss = trainingData.loss.slice(-100);
+        //         }
+
+        //     }, 200);
+        // }
+
+        function startTrainingProgressSimulation() {
+            // NU mai generăm valori locale - le luăm de la backend
             const progressInterval = setInterval(() => {
                 if (!trainingActive) {
                     clearInterval(progressInterval);
                     return;
                 }
 
-                epoch++;
-                const progress = (epoch / maxEpochs) * 100;
-                document.getElementById('trainingProgressFill').style.width = Math.min(progress, 100) + '%';
+                // Actualizează din backend în loc să genereze local
+                updateTrainingStatsFromBackend();
 
-                const baseAccuracy = Math.min(95, 20 + epoch * 0.15);
-                const accuracy = baseAccuracy + (5 * (1 - 1 / (1 + epoch / 20))) + (Math.random() * 2 - 1);
-                const finalAccuracy = Math.min(95, Math.max(20, accuracy));
+            }, 1000); // Verifică backend-ul la fiecare secundă
+        }
 
-                const baseLoss = Math.max(0.01, 2 - epoch * 0.004);
-                const loss = baseLoss * (1 + (Math.random() * 0.1 - 0.05));
+        // Nouă funcție pentru a actualiza din backend
+        function updateTrainingStatsFromBackend() {
+            fetch('/api/training_stats')
+                .then(response => response.json())
+                .then(data => {
+                    // Folosește NUMAI valorile de la backend
+                    const accuracy = data.accuracy || 0;
+                    const epochs = data.epochs || 0;
 
-                trainingData.epochs.push(epoch);
-                trainingData.accuracy.push(finalAccuracy);
-                trainingData.loss.push(loss);
+                    // Actualizează UI-ul cu valorile reale din backend
+                    document.getElementById('modelAccuracy').textContent = Math.round(accuracy) + '%';
+                    document.getElementById('trainingEpochs').textContent = epochs;
+                    document.getElementById('trainingSamples').textContent = `Training Samples: ${data.total_samples || 0}`;
+                    document.getElementById('normalSamples').textContent = data.normal_samples || 0;
+                    document.getElementById('attackSamples').textContent = data.attack_samples || 0;
 
-                document.getElementById('modelAccuracy').textContent = Math.round(finalAccuracy) + '%';
-                document.getElementById('trainingEpochs').textContent = epoch;
+                    // Actualizează progress bar bazat pe epoci
+                    const maxEpochs = 500;
+                    const progress = Math.min((epochs / maxEpochs) * 100, 100);
+                    document.getElementById('trainingProgressFill').style.width = progress + '%';
 
-                if (epoch % 5 === 0) {
-                    updateTrainingChart();
-                }
+                    // Actualizează datele pentru grafic DOAR cu valorile de la backend
+                    if (data.training_metrics && data.training_metrics.accuracy) {
+                        trainingData.epochs = data.training_metrics.epochs || [];
+                        trainingData.accuracy = data.training_metrics.accuracy || [];
+                        trainingData.loss = data.training_metrics.loss || [];
 
-                if (trainingData.epochs.length > 100) {
-                    trainingData.epochs = trainingData.epochs.slice(-100);
-                    trainingData.accuracy = trainingData.accuracy.slice(-100);
-                    trainingData.loss = trainingData.loss.slice(-100);
-                }
-
-            }, 200);
+                        // Actualizează graficul cu datele reale
+                        if (epochs % 5 === 0) {
+                            updateTrainingChart();
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.log('Backend training stats failed:', error);
+                });
         }
 
         function saveAIModels() {
@@ -1096,6 +1161,27 @@
             }
         }
 
+        // function updateTrainingStats() {
+        //     fetch('/api/training_stats')
+        //         .then(response => response.json())
+        //         .then(data => {
+        //             console.log("=== API TRAINING STATS ===");
+        //             console.log("API response:", data);
+        //             console.log("API accuracy:", data.accuracy);
+        //             console.log("API epochs:", data.epochs);
+        //             console.log("Current UI accuracy:", document.getElementById('modelAccuracy').textContent);
+        //             console.log("Current UI epochs:", document.getElementById('trainingEpochs').textContent);
+        //             document.getElementById('trainingSamples').textContent = `Training Samples: ${data.total_samples || 0}`;
+        //             document.getElementById('normalSamples').textContent = data.normal_samples || 0;
+        //             document.getElementById('attackSamples').textContent = data.attack_samples || 0;
+
+        //             if (!trainingActive) {
+        //                 document.getElementById('modelAccuracy').textContent = `${data.accuracy || 0}%`;
+        //                 document.getElementById('trainingEpochs').textContent = data.epochs || 0;
+        //             }
+        //         })
+        //         .catch(error => console.log('Training stats failed:', error));
+        // }
         function updateTrainingStats() {
             fetch('/api/training_stats')
                 .then(response => response.json())
@@ -1104,14 +1190,20 @@
                     document.getElementById('normalSamples').textContent = data.normal_samples || 0;
                     document.getElementById('attackSamples').textContent = data.attack_samples || 0;
 
-                    if (!trainingActive) {
-                        document.getElementById('modelAccuracy').textContent = `${data.accuracy || 0}%`;
-                        document.getElementById('trainingEpochs').textContent = data.epochs || 0;
+                    // ÎNTOTDEAUNA folosește valorile de la backend
+                    document.getElementById('modelAccuracy').textContent = `${Math.round(data.accuracy || 0)}%`;
+                    document.getElementById('trainingEpochs').textContent = data.epochs || 0;
+
+                    // Actualizează datele locale pentru grafic
+                    if (data.training_metrics) {
+                        trainingData.epochs = data.training_metrics.epochs || [];
+                        trainingData.accuracy = data.training_metrics.accuracy || [];
+                        trainingData.loss = data.training_metrics.loss || [];
+                        updateTrainingChart();
                     }
                 })
                 .catch(error => console.log('Training stats failed:', error));
         }
-
         function updateTestingStats() {
             if (!testingActive) return;
 
